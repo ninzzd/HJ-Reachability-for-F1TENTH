@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: odp
+Version: 0.0
+Summary: Optimized Dynamic Programming-Based Algorithms Solver
+Author: Minh Bui
+Author-email: buiminhb@sfu.ca
+License: MIT
+License-File: LICENSE
