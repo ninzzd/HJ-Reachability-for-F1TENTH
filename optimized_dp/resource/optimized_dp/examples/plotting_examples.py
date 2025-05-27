@@ -34,7 +34,7 @@ if os.path.exists("plots") == False:
 grid_min = np.array([-4.0, -4.0, -4.0, -math.pi])
 grid_max = np.array([4.0, 4.0, 4.0, math.pi])
 dims = 4
-N = np.array([80, 80, 80, 80])
+N = np.array([50, 50, 50, 50])
 pd=[3]
 g = Grid(grid_min, grid_max, dims, N, pd)
 
@@ -55,7 +55,7 @@ tau = np.arange(start=0, stop=Lookback_length + small_number, step=t_step)
 sys4D = DubinsCar4D(uMode="max", dMode="min")  
 
 # STEP 5: Initialize plotting option
-po = PlotOptions(do_plot=True, plot_type="set", plotDims=[0,1,3], slicesCut=[50], colorscale="Bluered", save_fig=False, filename="plots/4D_0_sublevel_set", interactive_html=True)
+po = PlotOptions(do_plot=True, plot_type="set", plotDims=[0,1,3], slicesCut=[30], colorscale="Bluered", save_fig=False, filename="plots/4D_0_sublevel_set", interactive_html=True)
 
 # STEP 6: Call HJSolver function
 compMethod = { "TargetSetMode": "None"}
