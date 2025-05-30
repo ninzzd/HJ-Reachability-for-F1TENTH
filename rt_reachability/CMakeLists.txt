@@ -21,6 +21,10 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
+# Node executables
+add_executable(sdf_node src/sdf_node.cpp)
+ament_target_dependencies(sdf_node rclcpp std_msgs sensor_msgs)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
@@ -31,5 +35,9 @@ if(BUILD_TESTING)
   #set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
+
+install(TARGETS sdf_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 ament_package()
