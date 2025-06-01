@@ -1,43 +1,63 @@
 #include<iostream>
-namespace rt_reachability{
-    class Grid{
-        public:
-            Grid(int Nx, int Ny, int Nv, int Nt){
-                this->Nx = Nx;
-                this->Ny = Ny;
-                this->Nv = Nv;
-                this->Nt = Nt;
-                this->value_function = (float****)malloc(Nx*sizeof(float***));
-                for(int i = 0;i < Nx;i++){
-                    value_function[i] = (float***)malloc(Ny*sizeof(float**));
-                    for(int j = 0; j < Ny;j++){
-                        value_function[i][j] = (float**)malloc(Nv*sizeof(float*));
-                        for(int k = 0;k < Nv;k++){
-                            value_function[i][j][k] = (float*)malloc(Nt*sizeof(float));
-                            for(int l = 0;l < Nt;l++){
-                                value_function[i][j][k][l] = 0.0;
-                            }
-                        }
-                    }
-                }
-            }
-            void setBounds(float min_x, float max_x, float min_y, float max_y, float min_v, float max_v, float min_t, float max_t){
-                this->max_x = max_x;
-                this->max_y = max_y;
-                this->max_v = max_v;
-                this->max_t = max_t;
-                this->min_x = min_x;
-                this->min_y = min_y;
-                this->min_v = min_v;
-                this->min_t = min_t;
-            }
-            float getValue(float x, float y, float v, float theta){
-                
-            }
-        private:
-            int Nx, Ny, Nv, Nt;
-            float min_x, max_x, min_y, max_y, min_v, max_v, min_t, max_t;
-            float**** value_function;
-            
-    };
+#include"Grid.hpp"
+using namespace rt_reachability;
+int Grid::Nx = Grid::Ny = Grid::Nv = Grid::Ntheta = 0;
+float Grid::x_min = Grid::y_min = Grid::v_min = Grid::theta_min = 0.0;
+float Grid::x_max = Grid::y_max = Grid::v_max = Grid::theta_max = 0.0;
+void Grid::setSize(int nx, int ny, int nv, int ntheta){
+    Nx = nx;
+    Ny = ny;
+    Nv = nv;
+    Ntheta = ntheta;
 }
+int Grid::getSizeX(){
+    return Nx;
+}
+int Grid::getSizeY(){
+    return Ny;
+}float Grid::x_min = Grid::y_min = Grid::v_min = Grid::theta_min = 0.0;
+int Grid::getSizeV(){
+    return Nv;
+}
+int Grid::getSizeTheta(){
+    return Ntheta;
+}
+void Grid::setLowerBounds(float xmin, float ymin, float vmin, float thetamin){
+    x_min = xmin;
+    y_min = ymin;
+    v_min = vmin;
+    theta_min = thetamin;
+}
+void Grid::setUpperBounds(float xmax, float ymax, float vmax, float thetamax){
+    x_max = xmax;
+    y_max = ymax;
+    v_max = vmax;
+    theta_max = thetamax;
+}
+float Grid::getMinX(){
+    return x_min;
+}
+float Grid::getMaxX(){
+    return x_max;
+}
+float Grid::getMinY(){
+    return y_min;
+}
+float Grid::getMaxY(){
+    return y_max;
+}
+
+float Grid::getMinV(){
+    return v_min;
+}
+float Grid::getMaxV(){
+    return v_max;
+}
+
+float Grid::getMinTheta(){
+    return theta_min;
+}
+float Grid::getMaxTheta(){
+    return theta_max;
+}
+
