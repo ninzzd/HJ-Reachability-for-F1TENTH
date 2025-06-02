@@ -1,9 +1,0 @@
-LICENSE
-README.md
-setup.py
-odp/compute_trajectory.py
-odp/solver.py
-odp.egg-info/PKG-INFO
-odp.egg-info/SOURCES.txt
-odp.egg-info/dependency_links.txt
-odp.egg-info/top_level.txt
