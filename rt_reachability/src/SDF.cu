@@ -29,7 +29,7 @@ void computeObstacleSet(float* r_obstacles, float angle_min, float angle_max, fl
     dim3 blockSize(100);
     dim3 gridSize(100);
     computeObstacleSetKernel<<<gridSize,blockSize>>>(cuda_r_obstacles,angle_min,angle_max,angle_inc,cuda_value_function,rt_reachability::Grid::getMaxX(),rt_reachability::Grid::getMinX(),rt_reachability::Grid::getSizeX(),rt_reachability::Grid::getMaxY(),rt_reachability::Grid::getMinY(),rt_reachability::Grid::getSizeY());
-    cudaMemcpy(value_func,cuda_value_function,sizeof(float)*n,cudaMemcpyHostToDevice);
+    cudaMemcpy(value_func,cuda_value_function,sizeof(float)*n,cudaMemcpyDeviceToHost);
     cudaFree(cuda_r_obstacles);
     cudaFree(cuda_value_function);
 }
