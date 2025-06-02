@@ -1,4 +1,6 @@
 #include "rt_reachability/SDF.hpp"
+#include <algorithm>
+using namespace rt_reachability;
 __global__ void computeObstacleSetKernel(float* r_obstacles, float angle_min, float angle_max, float angle_inc, float* _2Dvaluefunc, float x_max, float x_min, int Nx, float y_max, float y_min, int Ny){
     // flattenedGridPoints -> even indices: x-coordinate, odd indices: y-coordinate
     int i = blockIdx.x;
@@ -19,7 +21,7 @@ __global__ void computeSDF(){
     
 }
 
-void computeObstacleSet(float* r_obstacles, float angle_min, float angle_max, float angle_inc, float* value_func){
+void rt_reachability::computeObstacleSet(float* r_obstacles, float angle_min, float angle_max, float angle_inc, float* value_func){
     float* cuda_r_obstacles;
     float* cuda_value_function;
     size_t n = sizeof(r_obstacles)/sizeof(float);

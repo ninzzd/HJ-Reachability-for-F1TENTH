@@ -8,9 +8,9 @@ using std::placeholders::_1;
 using namespace rt_reachability;
 class SDFNode : public rclcpp::Node {
   public:
-    // int count;
+    int count;
     SDFNode() : Node("sdf") {
-      // this->count = 0;
+      this->count = 0;
       auto default_qos = rclcpp::QoS(rclcpp::SystemDefaultsQoS());
 
       subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
@@ -27,6 +27,14 @@ class SDFNode : public rclcpp::Node {
       float* r_obstacles = (float*) malloc(sizeof(float) * n_obstacles);
       float* valuefunc2D = (float*) malloc(sizeof(float) * Grid::getSizeX() * Grid::getSizeY());
       computeObstacleSet(r_obstacles,msg->angle_min, msg->angle_max, msg->angle_increment,valuefunc2D);
+      std::cout << "Successfully computed the obstacle set." << std::endl;
+      for(int i = 0;i < Grid::getSizeX();i++){
+        for(int j = 0;j < Grid::getSizeY();j++){
+          if(valuefunc2D[i*Grid::getSizeY() + j] == -1.0) std::cout << "X";
+          else std::cout << "O";
+        }
+        std::cout << std::endl;
+      }
       // Commented the below code to first test the obstacle set computation using CUDA
       // DO NOT DELETE THE BELOW COMMENTED CODE
       // float* x_obstacles = (float*) malloc(sizeof(float) * n_obstacles);
@@ -46,6 +54,7 @@ class SDFNode : public rclcpp::Node {
       //     y_obstacles[j] = (float)MAXFLOAT;
       //   }
       // }
+      this->count++;
     }
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr subscription_;
   };
@@ -59,12 +68,11 @@ class SDFNode : public rclcpp::Node {
     Grid::setLowerBounds(0.0,-2.0,0.1,-((float)M_PI)/6);
     Grid::setUpperBounds(4.0,+2.0,5.0,-((float)M_PI)/6);
     
-    rclcpp:spin(node);
-    // while(rclcpp:ok() && node->count < 1){
-    //   rclcpp::spin_some(node);
-    // }
-    // if(rclcpp::ok())
-
+    // rclcpp:spin(node);
+    while(rclcpp::ok() && node->count < 1){
+      rclcpp::spin_some(node);
+    }
+    if(rclcpp::ok())
       rclcpp::shutdown();
     return 0;
 }
