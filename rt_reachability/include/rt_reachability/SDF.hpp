@@ -7,6 +7,7 @@ namespace rt_reachability {
 
     void computeObstacleSet(
         float* r_obstacles,
+        int num_obstacles,
         float angle_min,
         float angle_max,
         float angle_inc,

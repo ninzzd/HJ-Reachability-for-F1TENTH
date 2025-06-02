@@ -25,13 +25,17 @@ class SDFNode : public rclcpp::Node {
       // Number of angles (estimated): 1080
       size_t n_obstacles = (size_t)(msg->angle_max - msg->angle_min/msg->angle_increment);
       float* r_obstacles = (float*) malloc(sizeof(float) * n_obstacles);
+      for(int i = 0; i < (int)n_obstacles; i++){
+        r_obstacles[i] = (float)msg->ranges[i];
+        std::cout << r_obstacles[i] << std::endl;
+      }
       float* valuefunc2D = (float*) malloc(sizeof(float) * Grid::getSizeX() * Grid::getSizeY());
-      computeObstacleSet(r_obstacles,msg->angle_min, msg->angle_max, msg->angle_increment,valuefunc2D);
+      computeObstacleSet(r_obstacles,(int)n_obstacles,msg->angle_min, msg->angle_max,msg->angle_increment,valuefunc2D);
       std::cout << "Successfully computed the obstacle set." << std::endl;
       for(int i = 0;i < Grid::getSizeX();i++){
         for(int j = 0;j < Grid::getSizeY();j++){
-          if(valuefunc2D[i*Grid::getSizeY() + j] == -1.0) std::cout << "X";
-          else std::cout << "O";
+          if(valuefunc2D[i*Grid::getSizeY() + j] == -1.0) std::cout << "- ";
+          else std::cout << "O ";
         }
         std::cout << std::endl;
       }
@@ -66,7 +70,7 @@ class SDFNode : public rclcpp::Node {
 
     Grid::setSize(50,50,50,50);
     Grid::setLowerBounds(0.0,-2.0,0.1,-((float)M_PI)/6);
-    Grid::setUpperBounds(4.0,+2.0,5.0,-((float)M_PI)/6);
+    Grid::setUpperBounds(4.0,+2.0,5.0,+((float)M_PI)/6);
     
     // rclcpp:spin(node);
     while(rclcpp::ok() && node->count < 1){
