@@ -23,22 +23,30 @@ class SDFNode : public rclcpp::Node {
       // Count: 0
       // Number of angles (array size): 1080
       // Number of angles (estimated): 1080
-      size_t n_obstacles = (size_t)(msg->angle_max - msg->angle_min/msg->angle_increment);
+      // std::cout << "Minimum Angle (in degrees)" << (float)msg->angle_min*180/(float)M_PI << std::endl;
+      // std::cout << "Maximum Angle (in degrees)" << (float)msg->angle_max*180/(float)M_PI << std::endl;
+      size_t n_obstacles = (size_t)msg->ranges.size();
+
+      // std::cout << "No. of Angles Stored: " << (int) n_obstacles << std::endl;
+      // std::cout << "Length of ranges[]: " <<  << std::endl;
       float* r_obstacles = (float*) malloc(sizeof(float) * n_obstacles);
       for(int i = 0; i < (int)n_obstacles; i++){
         r_obstacles[i] = (float)msg->ranges[i];
-        std::cout << r_obstacles[i] << std::endl;
+        // std::cout << r_obstacles[i] << std::endl;
       }
       float* valuefunc2D = (float*) malloc(sizeof(float) * Grid::getSizeX() * Grid::getSizeY());
-      computeObstacleSet(r_obstacles,(int)n_obstacles,msg->angle_min, msg->angle_max,msg->angle_increment,valuefunc2D);
-      std::cout << "Successfully computed the obstacle set." << std::endl;
+      computeObstacleSet(r_obstacles,(int)n_obstacles,(float)msg->angle_min,(float)msg->angle_max,(float)msg->angle_increment,valuefunc2D);
+      // std::cout << "Successfully computed the obstacle set." << std::endl;
+      std::cout << std::endl;
       for(int i = 0;i < Grid::getSizeX();i++){
         for(int j = 0;j < Grid::getSizeY();j++){
           if(valuefunc2D[i*Grid::getSizeY() + j] == -1.0) std::cout << "- ";
+          else if(valuefunc2D[i*Grid::getSizeY() + j] == -2.0) std::cout << "X ";
           else std::cout << "O ";
         }
         std::cout << std::endl;
       }
+      std::cout << std::endl;
       // Commented the below code to first test the obstacle set computation using CUDA
       // DO NOT DELETE THE BELOW COMMENTED CODE
       // float* x_obstacles = (float*) malloc(sizeof(float) * n_obstacles);
@@ -66,17 +74,17 @@ class SDFNode : public rclcpp::Node {
   int main(int argc, char *argv[]) {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<SDFNode>();
-    RCLCPP_INFO(node->get_logger(), "SDF is being computed");
+    //RCLCPP_INFO(node->get_logger(), "SDF is being computed");
 
     Grid::setSize(50,50,50,50);
     Grid::setLowerBounds(0.0,-2.0,0.1,-((float)M_PI)/6);
     Grid::setUpperBounds(4.0,+2.0,5.0,+((float)M_PI)/6);
     
-    // rclcpp:spin(node);
-    while(rclcpp::ok() && node->count < 1){
-      rclcpp::spin_some(node);
-    }
-    if(rclcpp::ok())
+    rclcpp::spin(node);
+    // while(rclcpp::ok() && node->count < 1){
+    //   rclcpp::spin_some(node);
+    // }
+    // if(rclcpp::ok())
       rclcpp::shutdown();
     return 0;
 }
