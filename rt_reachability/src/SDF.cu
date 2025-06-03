@@ -1,6 +1,8 @@
 #include "rt_reachability/SDF.hpp"
 #include "stdio.h"
 #include <algorithm>
+#include <chrono>
+#include <iostream>
 using namespace rt_reachability;
 __global__ void computeObstacleSetKernel(float* r_obstacles, int num_obstacles, float angle_min, float angle_max, float angle_inc, float* _2Dvaluefunc, float x_max, float x_min, int Nx, float y_max, float y_min, int Ny){
     // flattenedGridPoints -> even indices: x-coordinate, odd indices: y-coordinate
@@ -29,13 +31,40 @@ void rt_reachability::computeObstacleSet(float* r_obstacles, int num_obstacles, 
     float* cuda_r_obstacles;
     float* cuda_value_function;
     size_t n = num_obstacles;
+
+    std::cout << "----- Latency (For Obstacle Set Computation) -----" << std::endl;
+    auto start = std::chrono::high_resolution_clock::now();
     cudaMalloc(&cuda_r_obstacles,sizeof(float)*n);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto gpu_memory_allocation_time1 = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+    std::cout << "GPU Memory Allocation Time: " << gpu_memory_allocation_time1 << " microseconds" << std::endl;
+    
+    start = std::chrono::high_resolution_clock::now();
     cudaMalloc(&cuda_value_function,sizeof(float)*rt_reachability::Grid::getSizeX()*rt_reachability::Grid::getSizeY());
+    end = std::chrono::high_resolution_clock::now();
+    auto gpu_memory_allocation_time2 = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+    std::cout << "GPU Memory Allocation Time: " << gpu_memory_allocation_time2 << " microseconds" << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
     cudaMemcpy(cuda_r_obstacles,r_obstacles,sizeof(float)*n,cudaMemcpyHostToDevice);
+    end = std::chrono::high_resolution_clock::now();
+    auto gpu_h2d_copying_time = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+    std::cout << "GPU Memory Host-To-Device Copying Time: " << gpu_h2d_copying_time << " microseconds" << std::endl;
+
     dim3 blockSize(50);
     dim3 gridSize(50);
+
+    start = std::chrono::high_resolution_clock::now();
     computeObstacleSetKernel<<<gridSize,blockSize>>>(cuda_r_obstacles,num_obstacles,angle_min,angle_max,angle_inc,cuda_value_function,rt_reachability::Grid::getMaxX(),rt_reachability::Grid::getMinX(),rt_reachability::Grid::getSizeX(),rt_reachability::Grid::getMaxY(),rt_reachability::Grid::getMinY(),rt_reachability::Grid::getSizeY());
+    end = std::chrono::high_resolution_clock::now();
+    auto gpu_compute_time = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+    std::cout << "GPU Compute Time: " << gpu_compute_time << " microseconds" << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
     cudaMemcpy(value_func,cuda_value_function,sizeof(float)*rt_reachability::Grid::getSizeX()*rt_reachability::Grid::getSizeY(),cudaMemcpyDeviceToHost);
+    end = std::chrono::high_resolution_clock::now();
+    auto gpu_d2h_copying_time = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+    std::cout << "GPU Memory Device-To-Host Copying Time: " << gpu_d2h_copying_time << " microseconds" << std::endl;
     cudaFree(cuda_r_obstacles);
     cudaFree(cuda_value_function);
 }
