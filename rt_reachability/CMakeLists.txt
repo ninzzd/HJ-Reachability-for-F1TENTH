@@ -12,6 +12,10 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+
+# CUDA Dependency
 find_package(CUDAToolkit REQUIRED)
 
 # Add include directories for headers
@@ -55,6 +59,8 @@ ament_target_dependencies(sdf_node
   rclcpp
   std_msgs
   sensor_msgs
+  visualization_msgs
+  geometry_msgs
 )
 target_link_libraries(sdf_node
   grid_lib
