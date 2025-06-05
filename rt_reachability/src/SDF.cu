@@ -125,10 +125,19 @@ void rt_reachability::computeSDF(float* r_obstacles,int num_obstacles,float angl
 
     // dim3 blockSize(32*n);
     // dim3 gridSize(1+(int)((Grid::getSizeX()*Grid::getSizeY())/(32*n)));
+    auto start = std::chrono::high_resolution_clock::now();
     computeObstacleSetKernel<<<dim3(50),dim3(50),0,obstacleSet>>>(cuda_r_obstacles,num_obstacles,angle_min,angle_max,angle_inc,cuda_value_function,rt_reachability::Grid::getMaxX(),rt_reachability::Grid::getMinX(),rt_reachability::Grid::getSizeX(),rt_reachability::Grid::getMaxY(),rt_reachability::Grid::getMinY(),rt_reachability::Grid::getSizeY());
     cylToCartKernel<<<dim3(2),dim3(1024),0,cylToCart>>>(cuda_r_obstacles, num_obstacles, angle_min, angle_max, angle_inc, cuda_x_obstacles, cuda_y_obstacles);
+    auto end =   std::chrono::high_resolution_clock::now();
+    auto stream_duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+    std::cout << "Simulatneous Obstacle Set and Cartesian Coordinates Processing Time: " << stream_duration << " microseconds" << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
     computeSDFKernel<<<dim3(50),dim3(50)>>>(cuda_x_obstacles, cuda_y_obstacles,num_obstacles,cuda_value_function,rt_reachability::Grid::getMaxX(),rt_reachability::Grid::getMinX(),rt_reachability::Grid::getSizeX(),rt_reachability::Grid::getMaxY(),rt_reachability::Grid::getMinY(),rt_reachability::Grid::getSizeY());
-    
+    end =   std::chrono::high_resolution_clock::now();
+    auto sdf_duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+    std::cout << "SDF Processing Time: " << sdf_duration << " microseconds" << std::endl;
+
     cudaMemcpy(value_func,cuda_value_function,sizeof(float)*rt_reachability::Grid::getSizeX()*rt_reachability::Grid::getSizeY(),cudaMemcpyDeviceToHost);
     cudaFree(cuda_x_obstacles);
     cudaFree(cuda_y_obstacles);

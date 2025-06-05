@@ -16,7 +16,7 @@ class SDFNode : public rclcpp::Node {
     SDFNode() : Node("sdf") {
       this->count = 0;
       this->sent = 0;
-      auto default_qos = rclcpp::QoS(rclcpp::SystemDefaultsQoS());
+      auto default_qos = rclcpp::SensorDataQoS();
 
       subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
           "/scan", default_qos,
