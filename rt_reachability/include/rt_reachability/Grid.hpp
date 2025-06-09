@@ -20,10 +20,13 @@ namespace rt_reachability {
         static float getMaxV();
         static float getMinTheta();
         static float getMaxTheta();
+        static void initializeGrid(float* r_obstacles,int num_obstacles,float angle_min,float angle_max,float angle_inc);
+        static void computeReachability();
 
     private:
         static int Nx, Ny, Nv, Ntheta;
         static float x_min, y_min, v_min, theta_min;
         static float x_max, y_max, v_max, theta_max;
+        static float* grid;
     };
 }

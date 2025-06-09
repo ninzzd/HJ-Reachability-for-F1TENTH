@@ -22,5 +22,7 @@ namespace rt_reachability {
         float angle_inc,
         float* value_func
     );
+    float* gridInitSDF(float* r_obstacles,int num_obstacles,float angle_min,float angle_max,float angle_inc);
+    void checkCUDAerror(cudaError_t err,const char* msg);
 
 }
