@@ -1,7 +1,6 @@
 #include <iostream>
 #include "rt_reachability/Grid.hpp"
-#include "Grid.hpp"
-#include "SDF.hpp"
+#include "rt_reachability/SDF.hpp"
 #include "float.h"
 
 #define getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta) grid[l*Nx*Ny*Nv + k*Nx*Ny + i*Ny + j].value
@@ -20,6 +19,13 @@ float Grid::y_min;
 float Grid::v_min;
 float Grid::theta_min;
 Grid::Point* Grid::grid = nullptr;
+int Grid::Ndelta;
+int Grid::Na;
+float Grid::delta_min;
+float Grid::delta_max;
+float Grid::a_min;
+float Grid::a_max;
+float Grid::length = 1.0f;
 float Grid::delta_t;
 void Grid::setSize(int nx, int ny, int nv, int ntheta){
     Grid::Nx = nx;
@@ -80,8 +86,8 @@ float Grid::getMaxTheta(){
 __global__ void initGridKernel(float* cuda_SDF, Grid::Point* cuda_grid, int Nx, int Ny, int Nv, int Ntheta){
     int idx = blockDim.x*blockIdx.x + threadIdx.x;
     if(idx < Nx*Ny*Nv*Ntheta){
-        int l = idx/(Nx*Ny*Nv);
-        int k = (idx%(Nx*Ny*Nv))/(Nx*Ny);
+        // int l = idx/(Nx*Ny*Nv);
+        // int k = (idx%(Nx*Ny*Nv))/(Nx*Ny);
         int i = ((idx%(Nx*Ny*Nv))%(Nx*Ny))/Ny;
         int j = ((idx%(Nx*Ny*Nv))%(Nx*Ny))%Ny;
         cuda_grid[idx].value = cuda_SDF[i*Ny + j];
@@ -136,8 +142,6 @@ __device__ float approxHamiltonian(Grid::Point point, int i, int j, int k, int l
             case 3:
                 dot = v*tanf(delta)/1.0; // Find out car length
                 break;
-            default:
-
         }
         ham+=dot*(point.left_deriv[t] + point.right_deriv[t])/2;
     }
@@ -162,8 +166,6 @@ __device__ float correctedHamiltonian(float approx_ham, Grid::Point point, int i
             case 3:
                 dot = v*tanf(delta)/1.0; // Find out car length
                 break;
-            default:
-
         }
         ham-=fabs(dot)*(point.right_deriv[t] - point.left_deriv[t])/2;
     }
@@ -232,6 +234,18 @@ void Grid::computeDeltaT(){
     }
     delta_t = fminf((x_max-x_min)/((Nx-1)*lambda_x),fminf((y_max-y_min)/((Ny-1)*lambda_y),fminf((v_max-v_min)/((Nv-1)*lambda_v),(theta_max-theta_min)/((Ntheta-1)*lambda_theta))));
 }
-void Grid::computeReachability(){
-
+Grid::Point* Grid::computeReachability(int N){
+    dim3 gridSize((int)(Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta/1024)+1);
+    dim3 blockSize(1024);
+    for(int i = 0;i < N;i++){
+        partialDerivKernel<<<gridSize,blockSize>>>(grid, Nx, Ny, Nv, Ntheta, (x_max - x_min)/(Nx - 1), (y_max - y_min)/(Ny - 1), (v_max - v_min)/(Nv - 1), (theta_max - theta_min)/(Ntheta - 1));
+        cudaDeviceSynchronize();
+        updateValueKernel<<<gridSize,blockSize>>>(grid,Nx,Ny,Nv,Ntheta,x_min,x_max,y_max,y_min,v_max,v_min,theta_max,theta_min,Na,Ndelta,a_min,a_max,delta_min,delta_max,delta_t);
+    }
+    Point* tempGrid = (Point*)malloc(sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta);
+    cudaMemcpy(tempGrid,grid,sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta,cudaMemcpyDeviceToHost);
+    cudaFree(grid);
+    grid = nullptr;
+    cudaDeviceSynchronize();
+    return tempGrid;
 }

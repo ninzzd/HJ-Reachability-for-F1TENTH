@@ -107,7 +107,7 @@ void rt_reachability::cylToCart(float* r_obstacles,int num_obstacles,float angle
     cudaFree(cuda_x_obstacles);
     cudaFree(cuda_y_obstacles);
 }
-void rt_reachability::checkCUDAerror(cudaError_t err,const char* msg = nullptr){
+void rt_reachability::checkCUDAerror(cudaError_t err,const char* msg){
     if(err != cudaSuccess){
         std::cout << "CUDA Error: "<< cudaGetErrorString(err);
         if(msg) std::cout << ": " << msg << std::endl;
@@ -228,11 +228,12 @@ float* rt_reachability::computeSDF(float* r_obstacles,int num_obstacles,float an
     
     checkCUDAerror(cudaDeviceSynchronize(),"Error in Device Synchronization (After Copying Memory into value_function) ");
     checkCUDAerror(cudaFree(cuda_r_obstacles),"Error in Freeing Memory for cuda_r_obstacles");
-    checkCUDAerror(cudaDeviceSynchronize(),"Error in Device Synchronization (After Freeing Memory of cuda_r_obstacles) ");
-    checkCUDAerror(cudaFree(cuda_value_function),"Error in Freeing Memory for cuda_value_function");
+    // checkCUDAerror(cudaDeviceSynchronize(),"Error in Device Synchronization (After Freeing Memory of cuda_r_obstacles) ");
+    // checkCUDAerror(cudaFree(cuda_value_function),"Error in Freeing Memory for cuda_value_function");
     checkCUDAerror(cudaDeviceSynchronize(),"Error in Device Synchronization (After Freeing Memory of cuda_value_function) ");
     checkCUDAerror(cudaFree(cuda_x_obstacles),"Error in Freeing Memory for cuda_x_obstacles");
     checkCUDAerror(cudaDeviceSynchronize(),"Error in Device Synchronization (After Freeing Memory of cuda_x_obstacles) ");
     checkCUDAerror(cudaFree(cuda_y_obstacles),"Error in Freeing Memory for cuda_y_obstacles");
     checkCUDAerror(cudaDeviceSynchronize(),"Error in Device Synchronization (After Freeing Memory of cuda_y_obstacles) ");    
+    return cuda_value_function;
 }

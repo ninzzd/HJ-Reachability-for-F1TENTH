@@ -1,5 +1,6 @@
 #include <cmath>
 #include "rt_reachability/Grid.hpp"
+#include <cuda_runtime.h>
 #pragma once
 
 

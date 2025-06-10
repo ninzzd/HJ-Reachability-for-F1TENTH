@@ -32,7 +32,7 @@ namespace rt_reachability {
         static float getMaxTheta();
 
         static void initializeGrid(float* r_obstacles,int num_obstacles,float angle_min,float angle_max,float angle_inc);
-        static void computeReachability();
+        static Point* computeReachability(int N);
         static void computeDeltaT();
 
     private:

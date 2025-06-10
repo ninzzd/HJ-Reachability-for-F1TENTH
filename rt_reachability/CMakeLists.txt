@@ -25,7 +25,7 @@ include_directories(
 
 # Grid library (C++)
 add_library(grid_lib
-  src/Grid.cpp
+  src/Grid.cu
 )
 target_include_directories(grid_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -44,6 +44,12 @@ target_compile_options(sdf_lib PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
 )
 target_link_libraries(sdf_lib
+  CUDA::cudart
+)
+target_compile_options(grid_lib PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+)
+target_link_libraries(grid_lib
   CUDA::cudart
 )
 
