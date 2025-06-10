@@ -175,7 +175,7 @@ void rt_reachability::computeSDF(float* r_obstacles,int num_obstacles,float angl
     checkCUDAerror(cudaFree(cuda_y_obstacles),"Error in Freeing Memory for cuda_y_obstacles");
     checkCUDAerror(cudaDeviceSynchronize(),"Error in Device Synchronization (After Freeing Memory of cuda_y_obstacles) ");
 }
-float* rt_reachability::gridInitSDF(float* r_obstacles,int num_obstacles,float angle_min,float angle_max,float angle_inc){
+float* rt_reachability::computeSDF(float* r_obstacles,int num_obstacles,float angle_min,float angle_max,float angle_inc){
     float* cuda_r_obstacles;
     float* cuda_value_function;
     float* cuda_x_obstacles;
