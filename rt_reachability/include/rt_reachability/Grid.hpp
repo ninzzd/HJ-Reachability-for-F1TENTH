@@ -43,6 +43,7 @@ namespace rt_reachability {
         static float a_min, delta_min;
         static float a_max, delta_max;
         static float delta_t;
+        static float length;
         static Point* grid;
     };
 }

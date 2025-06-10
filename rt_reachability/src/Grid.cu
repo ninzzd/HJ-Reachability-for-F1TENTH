@@ -20,6 +20,7 @@ float Grid::y_min;
 float Grid::v_min;
 float Grid::theta_min;
 Grid::Point* Grid::grid = nullptr;
+float Grid::delta_t;
 void Grid::setSize(int nx, int ny, int nv, int ntheta){
     Grid::Nx = nx;
     Grid::Ny = ny;
@@ -210,7 +211,26 @@ void Grid::initializeGrid(float* r_obstacles,int num_obstacles,float angle_min,f
     checkCUDAerror(cudaFree(cuda_SDF));
 }
 void Grid::computeDeltaT(){
-
+    float lambda_x = 0;
+    float lambda_y = 0;
+    float lambda_v = Grid::a_max;
+    float lambda_theta = 0;
+    for(int a1 = 0;a1 < Nv;a1++){
+        float v = (v_min + a1*(v_max - v_min)/(Nv - 1));
+        for(int a2 = 0;a2 < Ntheta;a2++){
+            float theta = (theta_min + a2*(theta_max - theta_min)/(Ntheta - 1));
+            float x_dot = v*cosf(theta);
+            float y_dot = v*sinf(theta);
+            if(x_dot > lambda_x) lambda_x = x_dot;
+            if(y_dot > lambda_y) lambda_y = y_dot;
+        }
+        for(int a3 = 0;a3 < Grid::Ndelta;a3++){
+            float delta = (delta_min + a3*(delta_max - delta_min)/(Ndelta - 1));
+            float theta_dot = v*tanf(delta)/length;
+            if(theta_dot > lambda_theta) lambda_theta = theta_dot;
+        }
+    }
+    delta_t = fminf((x_max-x_min)/((Nx-1)*lambda_x),fminf((y_max-y_min)/((Ny-1)*lambda_y),fminf((v_max-v_min)/((Nv-1)*lambda_v),(theta_max-theta_min)/((Ntheta-1)*lambda_theta))));
 }
 void Grid::computeReachability(){
 
