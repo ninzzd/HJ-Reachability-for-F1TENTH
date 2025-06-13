@@ -134,8 +134,11 @@ class SDFNode : public rclcpp::Node {
         Grid::Point* grid = Grid::computeReachability(70);
     }
     void topic_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+        std::cout << "Callback function for LiDAR has started..." << std::endl;
         visualizeSDF(msg);
         visualizeReachabilitySetSlice(msg,3.0f,0.0f);
+        // The following line is not being returned
+        std::cout << "Callback function for LiDAR has ended..." << std::endl;
     }
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr subscription_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_;

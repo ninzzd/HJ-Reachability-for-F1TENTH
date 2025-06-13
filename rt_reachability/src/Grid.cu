@@ -250,6 +250,7 @@ Grid::Point* Grid::computeReachability(int N){
         updateValueKernel<<<gridSize,blockSize>>>(grid,Nx,Ny,Nv,Ntheta,x_min,x_max,y_max,y_min,v_max,v_min,theta_max,theta_min,Na,Ndelta,a_min,a_max,delta_min,delta_max,delta_t);
         CUDA_CHECK(cudaDeviceSynchronize());
     }
+    std::cout << "Reachability set computation is over" << std::endl;
     Point* tempGrid = (Point*)malloc(sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta);
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(tempGrid,grid,sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta,cudaMemcpyDeviceToHost));
