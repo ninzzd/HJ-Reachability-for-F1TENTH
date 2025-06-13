@@ -1,9 +1,6 @@
-#include <iostream>
 #include "rt_reachability/Grid.hpp"
-#include "rt_reachability/SDF.hpp"
-#include "float.h"
 
-#define getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta) grid[l*Nx*Ny*Nv + k*Nx*Ny + i*Ny + j].value
+#define getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta) grid[(l)*Nx*Ny*Nv + (k)*Nx*Ny + (i)*Ny + (j)].value
 
 using namespace rt_reachability;
 int Grid::Nx;
@@ -91,6 +88,8 @@ __global__ void initGridKernel(float* cuda_SDF, Grid::Point* cuda_grid, int Nx, 
         int i = ((idx%(Nx*Ny*Nv))%(Nx*Ny))/Ny;
         int j = ((idx%(Nx*Ny*Nv))%(Nx*Ny))%Ny;
         cuda_grid[idx].value = cuda_SDF[i*Ny + j];
+        cuda_grid[idx].opt_a = 0.0f;
+        cuda_grid[idx].opt_delta = 0.0f;
         for(int t = 0;t < 4;t++){
             cuda_grid[idx].left_deriv[t] = 0.0f;
             cuda_grid[idx].right_deriv[t] = 0.0f;
@@ -105,20 +104,22 @@ __global__ void partialDerivKernel(Grid::Point* grid, int Nx, int Ny, int Nv, in
         int i = ((idx%(Nx*Ny*Nv))%(Nx*Ny))/Ny;
         int j = ((idx%(Nx*Ny*Nv))%(Nx*Ny))%Ny;
         for(int t = 0;t < 4;t++){
-            float delta = delta_x*(~(t/2)&~(t%2)) + delta_y*(~(t/2)&(t%2)) + delta_v*((t/2)&~(t%2)) + delta_theta*((t/2)&(t%2));
-            if(i*(~(t/2)&~(t%2)) + j*(~(t/2)&(t%2)) + k*((t/2)&~(t%2)) + l*((t/2)&(t%2)) == (Nx-1)*(~(t/2)&~(t%2)) + (Ny-1)*(~(t/2)&(t%2)) + (Nv-1)*((t/2)&~(t%2)) + (Ntheta-1)*((t/2)&(t%2))){
-                float temp = (getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta) - getValue(grid,i - (~(t/2)&~(t%2)),j - (~(t/2)&(t%2)),k - ((t/2)&~(t%2)),l - ((t/2)&(t%2)),Nx,Ny,Nv,Ntheta))/delta;
-                grid[idx].left_deriv[t] = temp;
-                grid[idx].right_deriv[t] = temp;
+            bool bx = (t==0);
+            bool by = (t==1);
+            bool bv = (t==2);
+            bool bt = (t==3);
+            float diff = delta_x*bx + delta_y*by + delta_v*bv + delta_theta*bt;
+            if(i*bx + j*by + k*bv + l*bt == 0){
+                grid[idx].right_deriv[t] = (getValue(grid,i+bx,j+by,k+bv,l+bt,Nx,Ny,Nv,Ntheta) - getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta))/diff;
+                grid[idx].left_deriv[t] = grid[idx].right_deriv[t];
             }
-            else if(i*(~(t/2)&~(t%2)) + j*(~(t/2)&(t%2)) + k*((t/2)&~(t%2)) + l*((t/2)&(t%2)) == 0){
-                float temp = (getValue(grid,i + (~(t/2)&~(t%2)),j + (~(t/2)&(t%2)),k + ((t/2)&~(t%2)),l + ((t/2)&(t%2)),Nx,Ny,Nv,Ntheta) - getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta))/delta;
-                grid[idx].left_deriv[t] = temp;
-                grid[idx].right_deriv[t] = temp;
+            else if(i*bx + j*by + k*bv + l*bt == (Nx-1)*bx + (Ny-1)*by + (Nv-1)*bv + (Ntheta-1)*bt){
+                grid[idx].left_deriv[t] = (-getValue(grid,i-bx,j-by,k-bv,l-bt,Nx,Ny,Nv,Ntheta) + getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta))/diff;
+                grid[idx].right_deriv[t] = grid[idx].left_deriv[t];
             }
             else{
-                grid[idx].left_deriv[t] = (getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta) - getValue(grid,i - (~(t/2)&~(t%2)),j - (~(t/2)&(t%2)),k - ((t/2)&~(t%2)),l - ((t/2)&(t%2)),Nx,Ny,Nv,Ntheta))/delta;
-                grid[idx].right_deriv[t] = (getValue(grid,i + (~(t/2)&~(t%2)),j + (~(t/2)&(t%2)),k + ((t/2)&~(t%2)),l + ((t/2)&(t%2)),Nx,Ny,Nv,Ntheta) - getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta))/delta;
+                grid[idx].right_deriv[t] = (getValue(grid,i+bx,j+by,k+bv,l+bt,Nx,Ny,Nv,Ntheta) - getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta))/diff;
+                grid[idx].left_deriv[t] = (-getValue(grid,i-bx,j-by,k-bv,l-bt,Nx,Ny,Nv,Ntheta) + getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta))/diff;
             }
         }
     }
@@ -172,6 +173,7 @@ __device__ float correctedHamiltonian(float approx_ham, Grid::Point point, int i
     return ham;
 }
 __global__ void updateValueKernel(Grid::Point* grid, int Nx, int Ny, int Nv, int Ntheta, float x_min, float x_max, float y_max, float y_min, float v_max, float v_min, float theta_max, float theta_min, int Na, int Ndelta, float a_min, float a_max, float delta_min, float delta_max, float delta_t){
+    // The index logic is fine (double-checked)
     int idx = blockDim.x*blockIdx.x + threadIdx.x;
     int l = idx/(Nx*Ny*Nv);
     int k = (idx%(Nx*Ny*Nv))/(Nx*Ny);
@@ -202,15 +204,16 @@ __global__ void updateValueKernel(Grid::Point* grid, int Nx, int Ny, int Nv, int
 
 void Grid::initializeGrid(float* r_obstacles,int num_obstacles,float angle_min,float angle_max,float angle_inc){
     if(Grid::grid != nullptr){
-        cudaFree(Grid::grid);
+        CUDA_CHECK(cudaFree(Grid::grid));
     }
-    cudaMalloc(&(Grid::grid),sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta);
+    CUDA_CHECK(cudaMalloc(&(Grid::grid),sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta));
     float* cuda_SDF = computeSDF(r_obstacles,num_obstacles,angle_min,angle_max,angle_inc);
     dim3 gridSize((int)(Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta/1024)+1);
     dim3 blockSize(1024);
     initGridKernel<<<gridSize,blockSize>>>(cuda_SDF,Grid::grid,Grid::Nx,Grid::Ny,Grid::Nv,Grid::Ntheta);
-    checkCUDAerror(cudaDeviceSynchronize());
-    checkCUDAerror(cudaFree(cuda_SDF));
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaFree(cuda_SDF));
+    CUDA_CHECK(cudaDeviceSynchronize());
 }
 void Grid::computeDeltaT(){
     float lambda_x = 0;
@@ -235,17 +238,24 @@ void Grid::computeDeltaT(){
     delta_t = fminf((x_max-x_min)/((Nx-1)*lambda_x),fminf((y_max-y_min)/((Ny-1)*lambda_y),fminf((v_max-v_min)/((Nv-1)*lambda_v),(theta_max-theta_min)/((Ntheta-1)*lambda_theta))));
 }
 Grid::Point* Grid::computeReachability(int N){
+    if(Grid::grid != nullptr){
+        std::cout << "Grid has been initialized" << std::endl;
+    }
     dim3 gridSize((int)(Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta/1024)+1);
     dim3 blockSize(1024);
     for(int i = 0;i < N;i++){
+        std::cout << "Iteration: " << i << std::endl;
         partialDerivKernel<<<gridSize,blockSize>>>(grid, Nx, Ny, Nv, Ntheta, (x_max - x_min)/(Nx - 1), (y_max - y_min)/(Ny - 1), (v_max - v_min)/(Nv - 1), (theta_max - theta_min)/(Ntheta - 1));
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaDeviceSynchronize());
         updateValueKernel<<<gridSize,blockSize>>>(grid,Nx,Ny,Nv,Ntheta,x_min,x_max,y_max,y_min,v_max,v_min,theta_max,theta_min,Na,Ndelta,a_min,a_max,delta_min,delta_max,delta_t);
+        CUDA_CHECK(cudaDeviceSynchronize());
     }
     Point* tempGrid = (Point*)malloc(sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta);
-    cudaMemcpy(tempGrid,grid,sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta,cudaMemcpyDeviceToHost);
-    cudaFree(grid);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(tempGrid,grid,sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta,cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaFree(grid));
     grid = nullptr;
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaDeviceSynchronize());
     return tempGrid;
 }

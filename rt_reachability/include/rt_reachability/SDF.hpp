@@ -1,9 +1,9 @@
-#include <cmath>
-#include "rt_reachability/Grid.hpp"
-#include <cuda_runtime.h>
 #pragma once
 
-
+#include "rt_reachability/Grid.hpp"
+#include <cmath>
+#include <cuda_runtime.h>
+ #define CUDA_CHECK(cuda_error) rt_reachability::checkCUDAerror((cuda_error),__FILE__,__LINE__)
 namespace rt_reachability {
     void firstInitMem();
     void computeObstacleSet(
@@ -24,5 +24,10 @@ namespace rt_reachability {
         float* value_func
     );
     float* computeSDF(float* r_obstacles,int num_obstacles,float angle_min,float angle_max,float angle_inc);
-    void checkCUDAerror(cudaError_t err,const char* msg = nullptr);
+    inline void checkCUDAerror(cudaError_t err,const char* file, int line){
+        if(err != cudaSuccess){
+            std::cout << "CUDA Error at Line:" << line << " in " << file << ": " << cudaGetErrorString(err) << std::endl;
+            exit(EXIT_FAILURE);
+        }
+    }
 }

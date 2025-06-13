@@ -1,5 +1,7 @@
 #pragma once
-
+#include <iostream>
+#include "float.h"
+#include "rt_reachability/SDF.hpp"
 namespace rt_reachability {
     class Grid {
     public:
@@ -9,7 +11,7 @@ namespace rt_reachability {
                 float opt_delta;
                 float left_deriv[4];
                 float right_deriv[4];
-        } Point;
+        } Point; // 44 bytes
         static void setSize(int nx, int ny, int nv, int ntheta);
         static void setLowerBounds(float xmin, float ymin, float vmin, float thetamin);
         static void setUpperBounds(float xmax, float ymax, float vmax, float thetamax);
