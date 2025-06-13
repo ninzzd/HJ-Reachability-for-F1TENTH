@@ -142,8 +142,8 @@ void rt_reachability::computeSDF(float* r_obstacles,int num_obstacles,float angl
     CUDA_CHECK(cudaStreamWaitEvent(0,event2,0));
     auto end =   std::chrono::high_resolution_clock::now();
     auto stream_duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-    std::cout << "\033[2A";
-    std::cout << "\rSimulatneous Obstacle Set and Cartesian Coordinates Processing Time (in microseconds) : " << stream_duration << std::endl;
+    // std::cout << "\033[2A";
+    // std::cout << "\rSimulatneous Obstacle Set and Cartesian Coordinates Processing Time (in microseconds) : " << stream_duration << std::endl;
     CUDA_CHECK(cudaStreamDestroy(obstacleSet));
     CUDA_CHECK(cudaStreamDestroy(cylToCart));
     CUDA_CHECK(cudaEventDestroy(event1));
@@ -152,7 +152,7 @@ void rt_reachability::computeSDF(float* r_obstacles,int num_obstacles,float angl
     computeSDFKernel<<<dim3(50),dim3(50)>>>(cuda_x_obstacles, cuda_y_obstacles,num_obstacles,cuda_value_function,rt_reachability::Grid::getMaxX(),rt_reachability::Grid::getMinX(),rt_reachability::Grid::getSizeX(),rt_reachability::Grid::getMaxY(),rt_reachability::Grid::getMinY(),rt_reachability::Grid::getSizeY());
     end =   std::chrono::high_resolution_clock::now();
     auto sdf_duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-    std::cout << "\rSDF Processing Time (in microseconds): " << sdf_duration << std::endl;
+    // std::cout << "\rSDF Processing Time (in microseconds): " << sdf_duration << std::endl;
     
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(value_func,cuda_value_function,sizeof(float)*rt_reachability::Grid::getSizeX()*rt_reachability::Grid::getSizeY(),cudaMemcpyDeviceToHost));
@@ -201,8 +201,8 @@ float* rt_reachability::computeSDF(float* r_obstacles,int num_obstacles,float an
     CUDA_CHECK(cudaStreamWaitEvent(0,event2,0));
     auto end =   std::chrono::high_resolution_clock::now();
     auto stream_duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-    std::cout << "\033[2A";
-    std::cout << "\rSimulatneous Obstacle Set and Cartesian Coordinates Processing Time (in microseconds) : " << stream_duration << std::endl;
+    // std::cout << "\033[2A";
+    // std::cout << "\rSimulatneous Obstacle Set and Cartesian Coordinates Processing Time (in microseconds) : " << stream_duration << std::endl;
     CUDA_CHECK(cudaStreamDestroy(obstacleSet));
     CUDA_CHECK(cudaStreamDestroy(cylToCart));
     CUDA_CHECK(cudaEventDestroy(event1));
@@ -211,7 +211,7 @@ float* rt_reachability::computeSDF(float* r_obstacles,int num_obstacles,float an
     computeSDFKernel<<<dim3(50),dim3(50)>>>(cuda_x_obstacles, cuda_y_obstacles,num_obstacles,cuda_value_function,rt_reachability::Grid::getMaxX(),rt_reachability::Grid::getMinX(),rt_reachability::Grid::getSizeX(),rt_reachability::Grid::getMaxY(),rt_reachability::Grid::getMinY(),rt_reachability::Grid::getSizeY());
     end =   std::chrono::high_resolution_clock::now();
     auto sdf_duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-    std::cout << "\rSDF Processing Time (in microseconds): " << sdf_duration << std::endl;
+    // std::cout << "\rSDF Processing Time (in microseconds): " << sdf_duration << std::endl;
     
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaDeviceSynchronize());

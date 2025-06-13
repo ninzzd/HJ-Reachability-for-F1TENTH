@@ -6,7 +6,10 @@
 #include "rt_reachability/Grid.hpp"
 #include "rt_reachability/SDF.hpp"
 #include <cmath>
+#include "math.h"
 
+#define min(x,y) ((((x)<(y))?(x):(y)))
+#define max(x,y) ((((x)>(y))?(x):(y)))
 using std::placeholders::_1;
 using namespace rt_reachability;
 class SDFNode : public rclcpp::Node {
@@ -22,8 +25,11 @@ class SDFNode : public rclcpp::Node {
         subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/scan", default_qos,
             std::bind(&SDFNode::topic_callback, this, _1));
-        publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+        publisher_1 = this->create_publisher<sensor_msgs::msg::PointCloud2>(
             "/sdf_grid_pointcloud",10
+        );
+        publisher_2 = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+            "/reachability_grid_pointcloud",10
         );
     }
 
@@ -120,28 +126,69 @@ class SDFNode : public rclcpp::Node {
             memcpy(&pc_msg.data[byte_idx+8],&z,sizeof(float));
         }
         }
-        publisher_->publish(pc_msg);
+        publisher_1->publish(pc_msg);
         free(valuefunc2D);
     }
     void visualizeReachabilitySetSlice(const sensor_msgs::msg::LaserScan::SharedPtr msg,float v, float theta){
         size_t num_obstacles = (size_t)msg->ranges.size();
         float* r_obstacles = (float*) malloc(sizeof(float) * num_obstacles);
-        float* valuefunc2D = (float*) malloc(sizeof(float) * Grid::getSizeX() * Grid::getSizeY());
         for(int i = 0; i < (int)num_obstacles; i++){
             r_obstacles[i] = (float)msg->ranges[i];
         }
         Grid::initializeGrid(r_obstacles,num_obstacles,(float)msg->angle_min,(float)msg->angle_max,(float)msg->angle_increment);
         Grid::Point* grid = Grid::computeReachability(70);
+        float* grid_slice = (float*) malloc(sizeof(float)*Grid::getSizeX()*Grid::getSizeY());
+        int k = (int)floorf((v - Grid::getMinV())*(Grid::getSizeV() - 1)/(Grid::getMaxV() - Grid::getMinV()));
+        k = max(0,min(k,Grid::getSizeV()-1));
+        int l = (int)floorf((v - Grid::getMinTheta())*(Grid::getSizeTheta() - 1)/(Grid::getMaxTheta() - Grid::getMinTheta()));
+        l = max(0,min(k,Grid::getSizeTheta()-1));
+        for(int i = 0;i < Grid::getSizeX();i++){
+            for(int j = 0;j < Grid::getSizeY();j++){
+                grid_slice[i*Grid::getSizeY() + j] = grid[l*Grid::getSizeX()*Grid::getSizeY()*Grid::getSizeV() + k*Grid::getSizeX()*Grid::getSizeY() + i*Grid::getSizeY() + j].value;
+            }
+        }
+        free(grid);
+
+        sensor_msgs::msg::PointCloud2 pc_msg;
+        pc_msg.header.stamp = rclcpp::Time(0);
+        pc_msg.header.frame_id = "ego_racecar/base_link";
+        pc_msg.height = 1;
+        free(r_obstacles);
+        pc_msg.width = Grid::getSizeX()*Grid::getSizeY();
+        pc_msg.is_dense = true;
+        sensor_msgs::msg::PointField field;
+        field.name = "x"; field.offset = 0; field.datatype = sensor_msgs::msg::PointField::FLOAT32; field.count = 1;
+        pc_msg.fields.push_back(field);
+        field.name = "y"; field.offset = 4; pc_msg.fields.push_back(field);
+        field.name = "z"; field.offset = 8; pc_msg.fields.push_back(field);
+        pc_msg.point_step = 12; // 3 * 4 bytes (float32)
+        pc_msg.row_step = pc_msg.point_step * pc_msg.width;
+        pc_msg.data.resize(pc_msg.row_step*pc_msg.height);
+        for(int i = 0;i < Grid::getSizeX();i++){
+        for(int j = 0;j < Grid::getSizeY();j++){
+            size_t point_idx = i*Grid::getSizeY() + j;
+            size_t byte_idx = point_idx *pc_msg.point_step;
+            float x = Grid::getMaxX() - i*(Grid::getMaxX() - Grid::getMinX())/(Grid::getSizeX() - 1);
+            float y = Grid::getMaxY() - j*(Grid::getMaxY() - Grid::getMinY())/(Grid::getSizeY() - 1);
+            float z = grid_slice[i*Grid::getSizeY() + j];
+            memcpy(&pc_msg.data[byte_idx+0],&x,sizeof(float));
+            memcpy(&pc_msg.data[byte_idx+4],&y,sizeof(float));
+            memcpy(&pc_msg.data[byte_idx+8],&z,sizeof(float));
+        }
+        }
+        publisher_2->publish(pc_msg);
+        free(grid_slice);
     }
     void topic_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
         std::cout << "Callback function for LiDAR has started..." << std::endl;
-        visualizeSDF(msg);
+        // visualizeSDF(msg);
         visualizeReachabilitySetSlice(msg,3.0f,0.0f);
         // The following line is not being returned
         std::cout << "Callback function for LiDAR has ended..." << std::endl;
     }
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr subscription_;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_1;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_2;
   };
 
   int main(int argc, char *argv[]) {
@@ -153,8 +200,6 @@ class SDFNode : public rclcpp::Node {
     Grid::setUpperBounds(4.0,+2.0,5.0,+((float)M_PI)/6);
     Grid::computeDeltaT();
     // Bufferring the bash display to allows in-place display
-    std::cout << std::endl;
-    std::cout << std::endl;
     // The first cudaMalloc command takes almost a tenth of a second to execute
     // firstInitMem() takes the brunt of the slow cudaMalloc command as it allocates and frees memory to a dummy pointer
     firstInitMem();
