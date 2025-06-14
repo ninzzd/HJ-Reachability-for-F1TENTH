@@ -101,7 +101,7 @@ class SDFNode : public rclcpp::Node {
         // --- PointCloud Visualization ---
         sensor_msgs::msg::PointCloud2 pc_msg;
         pc_msg.header.stamp = rclcpp::Time(0);
-        pc_msg.header.frame_id = "ego_racecar/base_link";
+        pc_msg.header.frame_id = "ego_racecar/laser_model";
         pc_msg.height = 1;
         free(r_obstacles);
         pc_msg.width = Grid::getSizeX()*Grid::getSizeY();
@@ -151,7 +151,7 @@ class SDFNode : public rclcpp::Node {
 
         sensor_msgs::msg::PointCloud2 pc_msg;
         pc_msg.header.stamp = rclcpp::Time(0);
-        pc_msg.header.frame_id = "ego_racecar/base_link";
+        pc_msg.header.frame_id = "ego_racecar/laser_model";
         pc_msg.height = 1;
         free(r_obstacles);
         pc_msg.width = Grid::getSizeX()*Grid::getSizeY();
@@ -196,11 +196,11 @@ class SDFNode : public rclcpp::Node {
     auto node = std::make_shared<SDFNode>();
 
     Grid::setSize(50,50,50,50);
-    Grid::setLowerBounds(0.0,-2.0,0.1,-((float)M_PI)/6);
-    Grid::setUpperBounds(4.0,+2.0,5.0,+((float)M_PI)/6);
+    Grid::setLowerBounds(0.0,-1.0,0.1,-((float)M_PI)/2);
+    Grid::setUpperBounds(2.0,+1.0,5.0,+((float)M_PI)/2);
+    Grid::setCarLength(0.33);
+    Grid::setInputParams(10,10,0.01,10.0,-((float)M_PI)/6,+((float)M_PI)/6);
     Grid::computeDeltaT();
-    // Bufferring the bash display to allows in-place display
-    // The first cudaMalloc command takes almost a tenth of a second to execute
     // firstInitMem() takes the brunt of the slow cudaMalloc command as it allocates and frees memory to a dummy pointer
     firstInitMem();
     rclcpp::executors::SingleThreadedExecutor executor;
