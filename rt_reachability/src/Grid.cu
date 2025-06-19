@@ -115,16 +115,20 @@ __global__ void partialDerivKernel(Grid::Point* grid, int Nx, int Ny, int Nv, in
         int i = (idx - l*Nx*Ny*Nv - k*Nx*Ny)/Ny;
         int j = (idx - l*Nx*Ny*Nv - k*Nx*Ny - i*Ny);
         for(int t = 0;t < 4;t++){
-            bool bx = (t==0);
-            bool by = (t==1);
-            bool bv = (t==2);
-            bool bt = (t==3);
-            float diff = delta_x*bx + delta_y*by + delta_v*bv + delta_theta*bt;
-            if(i*bx + j*by + k*bv + l*bt == 0){
+            int bx = (t==0?1:0);
+            int by = (t==1?1:0);
+            int bv = (t==2?1:0);
+            int bt = (t==3?1:0);
+            float diff;
+            if(bx) diff = delta_x;
+            else if(by) diff = delta_y;
+            else if(bv) diff = delta_v;
+            else if(bt) diff = delta_theta;
+            if((bx && (i == 0))||(by && (j == 0))||(bv && (k == 0))||(bt && (l == 0))){
                 grid[idx].right_deriv[t] = (getValue(grid,i+bx,j+by,k+bv,l+bt,Nx,Ny,Nv,Ntheta) - getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta))/diff;
                 grid[idx].left_deriv[t] = grid[idx].right_deriv[t];
             }
-            else if(i*bx + j*by + k*bv + l*bt == (Nx-1)*bx + (Ny-1)*by + (Nv-1)*bv + (Ntheta-1)*bt){
+            else if((bx && (i == Nx-1))||(by && (j == Ny-1))||(bv && (k == Nv-1))||(bt && (l == Ntheta-1))){
                 grid[idx].left_deriv[t] = (-getValue(grid,i-bx,j-by,k-bv,l-bt,Nx,Ny,Nv,Ntheta) + getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta))/diff;
                 grid[idx].right_deriv[t] = grid[idx].left_deriv[t];
             }
@@ -136,11 +140,11 @@ __global__ void partialDerivKernel(Grid::Point* grid, int Nx, int Ny, int Nv, in
     }
 }
 __device__ float approxHamiltonian(Grid::Point point, int i, int j, int k, int l, int Nx, int Ny, int Nv, int Ntheta, float x_min, float x_max, float y_min, float y_max, float v_min, float v_max, float theta_min, float theta_max, float a, float delta,float length){
-    float ham= 0.0;
+    float ham = 0.0;
+    float v = (v_min + k*(v_max - v_min)/(Nv - 1));
+    float theta = (theta_min + l*(theta_max - theta_min)/(Ntheta - 1));
+    float dot = 0;
     for(int t = 0;t < 4;t++){
-        float v = (v_min + k*(v_max - v_min)/(Nv - 1));
-        float theta = (theta_min + l*(theta_max - theta_min)/(Ntheta - 1));
-        float dot = 0;
         switch(t){
             case 0:
                 dot = v*cosf(theta);
@@ -155,16 +159,17 @@ __device__ float approxHamiltonian(Grid::Point point, int i, int j, int k, int l
                 dot = v*tanf(delta)/length; // Find out car length
                 break;
         }
-        ham+=dot*(point.left_deriv[t] + point.right_deriv[t])/2;
+        // Upwind Difference Scheme for Spacial Derivative Approximation:
+        ham+=dot*((dot > 0?1:0)*point.left_deriv[t] + (dot < 0?1:0)*point.right_deriv[t]);
     }
     return ham;
 }
 __device__ float correctedHamiltonian(float approx_ham, Grid::Point point, int i, int j, int k, int l, int Nx, int Ny, int Nv, int Ntheta, float x_min, float x_max, float y_min, float y_max, float v_min, float v_max, float theta_min, float theta_max, float a, float delta, float length){
     float ham = approx_ham;
+    float v = (v_min + k*(v_max - v_min)/(Nv - 1));
+    float theta = (theta_min + l*(theta_max - theta_min)/(Ntheta - 1));
+    float dot = 0;
     for(int t = 0;t < 4;t++){
-        float v = (v_min + k*(v_max - v_min)/(Nv - 1));
-        float theta = (theta_min + l*(theta_max - theta_min)/(Ntheta - 1));
-        float dot = 0;
         switch(t){
             case 0:
                 dot = v*cosf(theta);
@@ -221,8 +226,11 @@ void Grid::initializeGrid(float* r_obstacles,int num_obstacles,float angle_min,f
     }
     CUDA_CHECK(cudaMalloc(&(Grid::grid),sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta));
     float* cuda_SDF = computeSDF(r_obstacles,num_obstacles,angle_min,angle_max,angle_inc);
-    dim3 gridSize((int)(Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta/1024)+1);
-    dim3 blockSize(1024);
+
+    // Given grid and block size ensures full occupancy
+    dim3 gridSize((int)(Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta/256)+1);
+    dim3 blockSize(256);
+
     initGridKernel<<<gridSize,blockSize>>>(cuda_SDF,Grid::grid,Grid::Nx,Grid::Ny,Grid::Nv,Grid::Ntheta);
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaFree(cuda_SDF));
@@ -243,25 +251,29 @@ void Grid::computeDeltaT(){
             if(y_dot > lambda_y) lambda_y = y_dot;
         }
         for(int a3 = 0;a3 < Grid::Ndelta;a3++){
-            float delta = (delta_min + a3*(delta_max - delta_min)/(Ndelta - 1));
+            float delta = delta_min + a3*(delta_max - delta_min)/(Ndelta - 1);
             float theta_dot = v*tanf(delta)/length;
             if(theta_dot > lambda_theta) lambda_theta = theta_dot;
         }
     }
-    delta_t = fminf((x_max-x_min)/((Nx-1)*lambda_x),fminf((y_max-y_min)/((Ny-1)*lambda_y),fminf((v_max-v_min)/((Nv-1)*lambda_v),(theta_max-theta_min)/((Ntheta-1)*lambda_theta))));
+    // Revised Courant-Freidrichs-Lewy Condition
+    // delta_t = fminf((x_max-x_min)/((Nx-1)*lambda_x),fminf((y_max-y_min)/((Ny-1)*lambda_y),fminf((v_max-v_min)/((Nv-1)*lambda_v),(theta_max-theta_min)/((Ntheta-1)*lambda_theta))));
+    delta_t = 1/(lambda_x/((x_max-x_min)/(Nx-1)) + lambda_y/((y_max-y_min)/(Ny-1)) + lambda_v/((v_max-v_min)/(Nv-1)) + lambda_theta/((theta_max-theta_min)/(Ntheta-1)));
     std::cout << "Computed Iteration Timestep: " << delta_t << std::endl;
 }
 Grid::Point* Grid::computeReachability(int N){
     if(Grid::grid != nullptr){
         std::cout << "Grid has been initialized" << std::endl;
     }
-    dim3 gridSize((int)((Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta)/1024)+1);
-    dim3 blockSize(1024);
+    dim3 gridSize((int)((Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta)/256)+1);
+    dim3 blockSize(256);
     for(int i = 0;i < N;i++){
         std::cout << "Iteration: " << i << std::endl;
         partialDerivKernel<<<gridSize,blockSize>>>(grid, Nx, Ny, Nv, Ntheta, (x_max - x_min)/(float)(Nx - 1), (y_max - y_min)/(float)(Ny - 1), (v_max - v_min)/(float)(Nv - 1), (theta_max - theta_min)/(float)(Ntheta - 1));
+        CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
         updateValueKernel<<<gridSize,blockSize>>>(grid,Nx,Ny,Nv,Ntheta,x_min,x_max,y_min,y_max,v_min,v_max,theta_min,theta_max,Na,Ndelta,a_min,a_max,delta_min,delta_max,delta_t,length);
+        CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
     }
     std::cout << "Reachability set computation is over" << std::endl;

@@ -1,11 +1,13 @@
 cmake_minimum_required(VERSION 3.17)
 project(rt_reachability LANGUAGES CXX CUDA)
 
-# Set C++ and CUDA standards
+# Set C++ and CUDA CMAKE variables
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 14)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_ARCHITECTURES "86")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -G -g")
 
 # Find ROS2 dependencies (only for the node)
 find_package(ament_cmake REQUIRED)
@@ -83,6 +85,9 @@ install(
 install(
   DIRECTORY include/
   DESTINATION include
+)
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
 )
 
 ament_package()

@@ -129,14 +129,14 @@ class SDFNode : public rclcpp::Node {
         publisher_1->publish(pc_msg);
         free(valuefunc2D);
     }
-    void visualizeReachabilitySetSlice(const sensor_msgs::msg::LaserScan::SharedPtr msg,float v, float theta){
+    void visualizeReachabilitySetSlice(const sensor_msgs::msg::LaserScan::SharedPtr msg,float v, float theta, int num){
         size_t num_obstacles = (size_t)msg->ranges.size();
         float* r_obstacles = (float*) malloc(sizeof(float) * num_obstacles);
         for(int i = 0; i < (int)num_obstacles; i++){
             r_obstacles[i] = (float)msg->ranges[i];
         }
         Grid::initializeGrid(r_obstacles,num_obstacles,(float)msg->angle_min,(float)msg->angle_max,(float)msg->angle_increment);
-        Grid::Point* grid = Grid::computeReachability(70);
+        Grid::Point* grid = Grid::computeReachability(num);
         float* grid_slice = (float*) malloc(sizeof(float)*Grid::getSizeX()*Grid::getSizeY());
         int k = (int)floorf((v - Grid::getMinV())*(Grid::getSizeV() - 1)/(Grid::getMaxV() - Grid::getMinV()));
         k = max(0,min(k,Grid::getSizeV()-1));
@@ -182,7 +182,7 @@ class SDFNode : public rclcpp::Node {
     void topic_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
         std::cout << "Callback function for LiDAR has started..." << std::endl;
         // visualizeSDF(msg);
-        visualizeReachabilitySetSlice(msg,3.0f,0.0f);
+        visualizeReachabilitySetSlice(msg,3.0f,0.0f,75);
         // The following line is not being returned
         std::cout << "Callback function for LiDAR has ended..." << std::endl;
     }
