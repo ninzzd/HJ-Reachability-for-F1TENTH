@@ -174,14 +174,78 @@ __device__ void secondOrderUpwind(Grid::Point* grid, int i, int j, int k, int l,
             float d1,d2,_d2;
             // For left derivative
             d1 = (vals[2] - vals[1])/diff; //i-0.5
-            d2 = (vals[3] + vals[1] - vals[2])/diff; //i
-            _d2 = (vals[2] + vals[0] - vals[1])/diff; //i-1
+            d2 = (vals[3] + vals[1] - vals[2])/(2*diff*diff); //i
+            _d2 = (vals[2] + vals[0] - vals[1])/(2*diff*diff); //i-1
             grid[idx].left_deriv[t] = d1 + diff*(fabs(_d2) <= fabs(d2)?_d2:d2);
             //For right derivative
             d1 = (vals[3] - vals[2])/diff; //i+0.5
-            d2 = (vals[3] + vals[1] - vals[2])/diff; //i
-            _d2 = (vals[4] + vals[2] - vals[3])/diff; //i+1
+            d2 = (vals[3] + vals[1] - vals[2])/(2*diff*diff); //i
+            _d2 = (vals[4] + vals[2] - vals[3])/(2*diff*diff); //i+1
             grid[idx].right_deriv[t] = d1 - diff*(fabs(_d2) <= fabs(d2)?_d2:d2);
+    }
+}
+__device__ void thirdOrderUpwind(Grid::Point* grid, int i, int j, int k, int l, int Nx, int Ny, int Nv, int Ntheta,float delta_x,float delta_y, float delta_v, float delta_theta){
+int idx = l * Nx * Ny * Nv + k * Nx * Ny + i * Ny + j;
+     float vals[7];
+     vals[3] = getValue(grid,i,j,k,l,Nx,Ny,Nv,Ntheta);
+     for(int t = 0;t < 4;t++){
+            int bx = (t==0?1:0);
+            int by = (t==1?1:0);
+            int bv = (t==2?1:0);
+            int bt = (t==3?1:0);
+            float diff;
+            diff = bx*delta_x + by*delta_y + bv*delta_v + bt*delta_theta;
+            float lastr, lastl;
+            lastr = lastl = vals[2];
+            for(int a = 1;a <= 3;a++){
+                if(bx*(i+a) + by*(j+a) + bv*(k+a)+ bt*(l+a) >= bx*Nx + by*Ny + bv*Nv + bt*Ntheta){
+                    vals[4+a] = lastr;
+                }
+                else{
+                    lastr = getValue(grid,i+bx*a,j+by*a,k+bv*a,l+bt*a,Nx,Ny,Nv,Ntheta);
+                    vals[4+a] = lastr;
+                }
+                if(bx*(i-a) + by*(j-a) + bv*(k-a)+ bt*(l-a) <= 0){
+                    vals[4-a] = lastl;
+                }
+                else{
+                    lastl = getValue(grid,i-bx*a,j-by*a,k-bv*a,l-bt*a,Nx,Ny,Nv,Ntheta);
+                    vals[4-a] = lastl;
+                }
+            }
+            float d1,d2,_d2,d3,_d3;
+            // For left derivative
+            // (i-3) -> 0 ; (i-2) -> 1 ; (i-1) -> 2 ; (i) -> 3 ; (i+1) -> 4 ; (i+2) -> 5; (i+3) -> 6 ;
+            d1 = (vals[3] - vals[2])/diff; //i-0.5
+            d2 = (vals[4] + vals[2] - vals[3])/(2*diff*diff); //i
+            _d2 = (vals[3] + vals[1] - vals[2])/(2*diff*diff); //i-1
+            grid[idx].left_deriv[t] = d1 + diff*(fabs(_d2) <= fabs(d2)?_d2:d2);
+            if(fabs(_d2) <= fabs(d2)){
+                _d3 = (vals[3] - 3*vals[2] + 3*vals[1] - vals[0])/(6*diff*diff*diff); //i-(3/2)
+                d3 = (vals[4] - 3*vals[3] + 3*vals[2] - vals[1])/(6*diff*diff*diff); //i-(1/2)
+                grid[idx].left_deriv[t] += 2*diff*diff*(fabs(_d3) <= fabs(d3)?_d3:d3);
+            }
+            else{
+                _d3 = (vals[4] - 3*vals[3] + 3*vals[2] - vals[1])/(6*diff*diff*diff); //i-(1/2)
+                d3 = (vals[5] - 3*vals[4] + 3*vals[3] - vals[2])/(6*diff*diff*diff); //i+(1/2)
+                grid[idx].left_deriv[t] -= diff*diff*(fabs(_d3) <= fabs(d3)?_d3:d3);
+            }
+            
+            //For right derivative
+            d1 = (vals[4] - vals[3])/diff; //i+(1/2)
+            d2 = (vals[5] + vals[3] - vals[4])/(2*diff*diff); //i+1
+            _d2 = (vals[4] + vals[2] - vals[3])/(2*diff*diff); //i
+            grid[idx].right_deriv[t] = d1 - diff*(fabs(_d2) <= fabs(d2)?_d2:d2);
+            if(fabs(_d2) <= fabs(d2)){
+                _d3 = (vals[4] - 3*vals[3] + 3*vals[2] - vals[1])/(6*diff*diff*diff); //i-(1/2)
+                d3 = (vals[5] - 3*vals[4] + 3*vals[3] - vals[2])/(6*diff*diff*diff); //i+(1/2)
+                grid[idx].left_deriv[t] -= diff*diff*(fabs(_d3) <= fabs(d3)?_d3:d3);
+            }
+            else{
+                _d3 = (vals[5] - 3*vals[4] + 3*vals[3] - vals[2])/(6*diff*diff*diff); //i+(1/2)
+                d3 = (vals[6] - 3*vals[5] + 3*vals[4] - vals[3])/(6*diff*diff*diff); //i+(3/2)
+                grid[idx].left_deriv[t] += 2*diff*diff*(fabs(_d3) <= fabs(d3)?_d3:d3);
+            }
     }
 }
 __global__ void partialDerivKernel(Grid::Point* grid, int Nx, int Ny, int Nv, int Ntheta,float delta_x,float delta_y, float delta_v, float delta_theta){
@@ -193,7 +257,8 @@ __global__ void partialDerivKernel(Grid::Point* grid, int Nx, int Ny, int Nv, in
         int i = max(min(Nx-1,(idx - l*Nx*Ny*Nv - k*Nx*Ny)/Ny),0);
         int j = max(min(Ny-1,(idx - l*Nx*Ny*Nv - k*Nx*Ny - i*Ny)),0);
         //firstOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
-        secondOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
+        //secondOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
+        thirdOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
     }
     __syncthreads();
 }
