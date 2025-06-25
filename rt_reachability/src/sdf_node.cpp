@@ -20,6 +20,7 @@ class SDFNode : public rclcpp::Node {
     SDFNode() : Node("sdf") {
         this->count = 0;
         this->sent = 0;
+        this->declare_parameter<int>("num_iter",10);
         auto default_qos = rclcpp::SensorDataQoS().keep_last(1);
 
         subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
@@ -181,8 +182,10 @@ class SDFNode : public rclcpp::Node {
     }
     void topic_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
         std::cout << "Callback function for LiDAR has started..." << std::endl;
-        // visualizeSDF(msg);
-        visualizeReachabilitySetSlice(msg,3.0f,0.0f,75);
+        // visualizeSDF(msg);)
+        int num;
+        this->get_parameter("num_iter",num);
+        visualizeReachabilitySetSlice(msg,3.0f,0.0f,num);
         // The following line is not being returned
         std::cout << "Callback function for LiDAR has ended..." << std::endl;
     }
@@ -199,7 +202,8 @@ class SDFNode : public rclcpp::Node {
     Grid::setLowerBounds(0.0,-1.0,0.1,-((float)M_PI)/2);
     Grid::setUpperBounds(2.0,+1.0,5.0,+((float)M_PI)/2);
     Grid::setCarLength(0.33);
-    Grid::setInputParams(10,10,0.01,10.0,-((float)M_PI)/6,+((float)M_PI)/6);
+    Grid::setInputParams(10,10,0.01f,10.0f,-((float)M_PI)/6,+((float)M_PI)/6);
+    Grid::setValueFunctionBounds(-2.5f,+5.0f);
     Grid::computeDeltaT();
     // firstInitMem() takes the brunt of the slow cudaMalloc command as it allocates and frees memory to a dummy pointer
     firstInitMem();
