@@ -196,24 +196,24 @@ int idx = l * Nx * Ny * Nv + k * Nx * Ny + i * Ny + j;
             float diff;
             diff = bx*delta_x + by*delta_y + bv*delta_v + bt*delta_theta;
             float lastr, lastl;
-            lastr = lastl = vals[2];
+            lastr = lastl = vals[3];
             for(int a = 1;a <= 3;a++){
                 if(bx*(i+a) + by*(j+a) + bv*(k+a)+ bt*(l+a) >= bx*Nx + by*Ny + bv*Nv + bt*Ntheta){
-                    vals[4+a] = lastr;
+                    vals[3+a] = lastr;
                 }
                 else{
                     lastr = getValue(grid,i+bx*a,j+by*a,k+bv*a,l+bt*a,Nx,Ny,Nv,Ntheta);
-                    vals[4+a] = lastr;
+                    vals[3+a] = lastr;
                 }
                 if(bx*(i-a) + by*(j-a) + bv*(k-a)+ bt*(l-a) <= 0){
-                    vals[4-a] = lastl;
+                    vals[3-a] = lastl;
                 }
                 else{
                     lastl = getValue(grid,i-bx*a,j-by*a,k-bv*a,l-bt*a,Nx,Ny,Nv,Ntheta);
-                    vals[4-a] = lastl;
+                    vals[3-a] = lastl;
                 }
             }
-            float d1,d2,_d2,d3,_d3;
+            float d1,d2,_d2,d3,_d3; // By convention, _d2 is sequentially or is indexed lesser than d2. Same applies to _d3 and d3
             // For left derivative
             // (i-3) -> 0 ; (i-2) -> 1 ; (i-1) -> 2 ; (i) -> 3 ; (i+1) -> 4 ; (i+2) -> 5; (i+3) -> 6 ;
             d1 = (vals[3] - vals[2])/diff; //i-0.5
@@ -256,8 +256,8 @@ __global__ void partialDerivKernel(Grid::Point* grid, int Nx, int Ny, int Nv, in
         int k = max(min(Nv-1,(idx - l*Nx*Ny*Nv)/(Nx*Ny)),0);
         int i = max(min(Nx-1,(idx - l*Nx*Ny*Nv - k*Nx*Ny)/Ny),0);
         int j = max(min(Ny-1,(idx - l*Nx*Ny*Nv - k*Nx*Ny - i*Ny)),0);
-        //firstOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
-        //secondOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
+        // firstOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
+        // secondOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
         thirdOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
     }
     __syncthreads();
