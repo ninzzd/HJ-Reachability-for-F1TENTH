@@ -19,6 +19,7 @@ namespace rt_reachability {
         static void setValueFunctionBounds(float min, float max);
         static void setCarLength(float length);
         static void setInputParams(int Na, int Ndelta, float a_min, float a_max, float delta_min, float delta_max);
+        static void setHorizon(float horizon);
 
         static int getSizeX();
         static int getSizeY();
@@ -38,6 +39,7 @@ namespace rt_reachability {
         static float getMaxTheta();
 
         static void initializeGrid(float* r_obstacles,int num_obstacles,float angle_min,float angle_max,float angle_inc);
+        static Point* computeReachability();
         static Point* computeReachability(int N);
         static void computeDeltaT();
 
@@ -52,5 +54,6 @@ namespace rt_reachability {
         static float length;
         static float val_min, val_max;
         static Point* grid;
+        static float horizon;
     };
 }

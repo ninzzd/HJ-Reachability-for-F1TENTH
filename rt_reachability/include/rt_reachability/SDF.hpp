@@ -3,7 +3,7 @@
 #include "rt_reachability/Grid.hpp"
 #include <cmath>
 #include <cuda_runtime.h>
- #define CUDA_CHECK(cuda_error) rt_reachability::checkCUDAerror((cuda_error),__FILE__,__LINE__)
+#define CUDA_CHECK(cuda_error) rt_reachability::checkCUDAerror((cuda_error),__FILE__,__LINE__)
 namespace rt_reachability {
     void firstInitMem();
     void computeObstacleSet(
