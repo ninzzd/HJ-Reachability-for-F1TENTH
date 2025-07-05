@@ -104,7 +104,7 @@ float Grid::getMinTheta(){
 float Grid::getMaxTheta(){
     return Grid::theta_max;
 }
-__global__ void initGridKernel(float* cuda_SDF, Grid::Point* cuda_grid, int Nx, int Ny, int Nv, int Ntheta){
+__global__ void initGridKernel(float* cuda_SDF, Grid::Point* cuda_grid, int Nx, int Ny, int Nv, int Ntheta, float safety_radius){
     int idx = blockDim.x*blockIdx.x + threadIdx.x;
     // max(min(Ntheta-1,...),0)
     if(idx < Nx*Ny*Nv*Ntheta){
@@ -112,7 +112,7 @@ __global__ void initGridKernel(float* cuda_SDF, Grid::Point* cuda_grid, int Nx, 
         int k = max(min(Nv-1,(idx - l*Nx*Ny*Nv)/(Nx*Ny)),0);
         int i = max(min(Nx-1,(idx - l*Nx*Ny*Nv - k*Nx*Ny)/Ny),0);
         int j = max(min(Ny-1,(idx - l*Nx*Ny*Nv - k*Nx*Ny - i*Ny)),0);
-        cuda_grid[idx].value = cuda_SDF[i*Ny + j];
+        cuda_grid[idx].value = cuda_SDF[i*Ny + j] - safety_radius;
         cuda_grid[idx].opt_a = 0.0f;
         cuda_grid[idx].opt_delta = 0.0f;
         for(int t = 0;t < 4;t++){
@@ -266,7 +266,6 @@ __global__ void partialDerivKernel(Grid::Point* grid, int Nx, int Ny, int Nv, in
         // secondOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
         thirdOrderUpwind(grid,i,j,k,l,Nx,Ny,Nv,Ntheta,delta_x,delta_y,delta_v,delta_theta);
     }
-    __syncthreads();
 }
 __device__ float approxHamiltonian(Grid::Point point, int i, int j, int k, int l, int Nx, int Ny, int Nv, int Ntheta, float x_min, float x_max, float y_min, float y_max, float v_min, float v_max, float theta_min, float theta_max, float a, float delta,float length){
     float ham = 0.0;
@@ -289,6 +288,7 @@ __device__ float approxHamiltonian(Grid::Point point, int i, int j, int k, int l
                 break;
         }
         // Upwind Difference Scheme for Spacial Derivative Approximation:
+        // Roe-Fix Method
         ham+=dot*((dot > 0?1:0)*point.left_deriv[t] + (dot <= 0?1:0)*point.right_deriv[t]);
     }
     return ham;
@@ -326,27 +326,53 @@ __global__ void updateValueKernel(Grid::Point* grid, int Nx, int Ny, int Nv, int
         int k = max(min(Nv-1,(idx - l*Nx*Ny*Nv)/(Nx*Ny)),0);
         int i = max(min(Nx-1,(idx - l*Nx*Ny*Nv - k*Nx*Ny)/Ny),0);
         int j = max(min(Ny-1,(idx - l*Nx*Ny*Nv - k*Nx*Ny - i*Ny)),0);
-        float hamiltonian_max = -(float)FLT_MAX;
+        float hamiltonian = 0.0;
         float opt_a = 0.0;
         float opt_delta = 0.0;
-        // Brute-Force Hamiltonian Optimization
-        for(int a1 = 0; a1 < Na;a1++){
-            for(int a2 = 0; a2 < Ndelta;a2++){
-                float a = a_min + a1*(a_max - a_min)/(Na-1);
-                float delta = delta_min + a2*(delta_max - delta_min)/(Ndelta - 1);
-                float ham = approxHamiltonian(grid[idx],i,j,k,l,Nx,Ny,Nv,Ntheta,x_min,x_max,y_min,y_max,v_min,v_max,theta_min,theta_max,a,delta,length);
-                if(ham > hamiltonian_max){
-                    hamiltonian_max = ham;
-                    opt_a = a;
-                    opt_delta = delta;
-                }
+        // Brute-Force Hamiltonian Optimization (completely unnecessary)
+        // for(int a1 = 0; a1 < Na;a1++){
+        //     for(int a2 = 0; a2 < Ndelta;a2++){
+        //         float a = a_min + a1*(a_max - a_min)/(Na-1);
+        //         float delta = delta_min + a2*(delta_max - delta_min)/(Ndelta - 1);
+        //         float ham = approxHamiltonian(grid[idx],i,j,k,l,Nx,Ny,Nv,Ntheta,x_min,x_max,y_min,y_max,v_min,v_max,theta_min,theta_max,a,delta,length);
+        //         if(ham > hamiltonian_max){
+        //             hamiltonian_max = ham;
+        //             opt_a = a;
+        //             opt_delta = delta;
+        //         }
+        //     }
+        // }
+        float v = v_min + k*(v_max - v_min)/(Nv - 1);
+        float theta = theta_min + l*(theta_max - theta_min)/(Ntheta - 1);
+        float dot, deriv;
+        for(int t = 0;t < 4;t++){
+            // Lax-Friedrichs (Averaged left and right derivs instead of upwind)
+            deriv = (grid[idx].left_deriv[t] + grid[idx].right_deriv[t])/2;
+            switch(t){
+                case 0:
+                    dot = v*cosf(theta);
+                    break;
+                case 1:
+                    dot = v*sinf(theta);
+                    break;
+                case 2:
+                    opt_a = deriv > 0 ? a_max : a_min;
+                    dot = opt_a;
+
+                    break;
+                case 3:
+                    opt_delta = v*deriv > 0 ? delta_max : delta_min;
+                    dot = v*tanf(opt_delta)/length; // Find out car length
+                    break;
             }
+            // Upwind Difference Scheme for Spacial Derivative Approximation:
+            hamiltonian+=dot*deriv;
         }
         grid[idx].opt_a = opt_a;
         grid[idx].opt_delta = opt_delta;
-        hamiltonian_max = correctedHamiltonian(hamiltonian_max,grid[idx],i,j,k,l,Nx,Ny,Nv,Ntheta,x_min,x_max,y_min,y_max,v_min,v_max,theta_min,theta_max,a_max,delta_max,length);
+        hamiltonian = correctedHamiltonian(hamiltonian,grid[idx],i,j,k,l,Nx,Ny,Nv,Ntheta,x_min,x_max,y_min,y_max,v_min,v_max,theta_min,theta_max,a_max,delta_max,length);
         // Forward-Euler Integration (In Backward Time?!)
-        float temp = grid[idx].value + hamiltonian_max*delta_t;
+        float temp = grid[idx].value + hamiltonian*delta_t;
         grid[idx].value = fmaxf(val_min,fminf(temp,grid[idx].value));
         // grid[idx].value -= 5.0f;
         // grid[idx].value = fmaxf(val_min,grid[idx].value);
@@ -364,7 +390,7 @@ void Grid::initializeGrid(float* r_obstacles,int num_obstacles,float angle_min,f
     dim3 gridSize((int)(Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta/256)+1);
     dim3 blockSize(256);
 
-    initGridKernel<<<gridSize,blockSize>>>(cuda_SDF,Grid::grid,Grid::Nx,Grid::Ny,Grid::Nv,Grid::Ntheta);
+    initGridKernel<<<gridSize,blockSize>>>(cuda_SDF,Grid::grid,Grid::Nx,Grid::Ny,Grid::Nv,Grid::Ntheta,Grid::length);
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaFree(cuda_SDF));
     // CUDA_CHECK(cudaDeviceSynchronize());

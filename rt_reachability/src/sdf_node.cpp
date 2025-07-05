@@ -1,8 +1,11 @@
 #include "rclcpp/rclcpp.hpp"
+#include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "geometry_msgs/msg/point.hpp"
-#include "visualization_msgs/msg/marker.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
+// #include "visualization_msgs/msg/marker.hpp"
+#include "tf2_ros/buffer.h"
 #include "rt_reachability/Grid.hpp"
 #include "rt_reachability/SDF.hpp"
 #include <cmath>
@@ -16,7 +19,7 @@ class SDFNode : public rclcpp::Node {
   public:
     int count;
     int sent;
-    visualization_msgs::msg::Marker prev_marker;
+    // visualization_msgs::msg::Marker prev_marker;
     SDFNode() : Node("sdf") {
         this->count = 0;
         this->sent = 0;
@@ -26,11 +29,14 @@ class SDFNode : public rclcpp::Node {
         subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/scan", default_qos,
             std::bind(&SDFNode::topic_callback, this, _1));
-        publisher_1 = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-            "/sdf_grid_pointcloud",10
+        sdf_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+            "/sdf_grid_pointcloud", 10
         );
-        publisher_2 = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-            "/reachability_grid_pointcloud",10
+        reach_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+            "/reachability_grid_pointcloud",    10
+        );
+        drive_pub = this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(
+            "/drive",   10
         );
         Grid::setSize(50,50,50,50);
         Grid::setLowerBounds(0.0,-1.0,0.1,-((float)M_PI)/2);
@@ -136,17 +142,17 @@ class SDFNode : public rclcpp::Node {
             memcpy(&pc_msg.data[byte_idx+8],&z,sizeof(float));
         }
         }
-        publisher_1->publish(pc_msg);
+        sdf_pub->publish(pc_msg);
         free(valuefunc2D);
     }
-    void visualizeReachabilitySetSlice(const sensor_msgs::msg::LaserScan::SharedPtr msg,float v, float theta){
+    void visualizeReachabilitySetSlice(const sensor_msgs::msg::LaserScan::SharedPtr msg,float v, float theta, Grid::Point* grid){
         size_t num_obstacles = (size_t)msg->ranges.size();
         float* r_obstacles = (float*) malloc(sizeof(float) * num_obstacles);
         for(int i = 0; i < (int)num_obstacles; i++){
             r_obstacles[i] = (float)msg->ranges[i];
         }
         Grid::initializeGrid(r_obstacles,num_obstacles,(float)msg->angle_min,(float)msg->angle_max,(float)msg->angle_increment);
-        Grid::Point* grid = Grid::computeReachability();
+        grid = Grid::computeReachability();
         float* grid_slice = (float*) malloc(sizeof(float)*Grid::getSizeX()*Grid::getSizeY());
         int k = (int)floorf((v - Grid::getMinV())*(Grid::getSizeV() - 1)/(Grid::getMaxV() - Grid::getMinV()));
         k = max(0,min(k,Grid::getSizeV()-1));
@@ -157,7 +163,6 @@ class SDFNode : public rclcpp::Node {
                 grid_slice[i*Grid::getSizeY() + j] = grid[l*Grid::getSizeX()*Grid::getSizeY()*Grid::getSizeV() + k*Grid::getSizeX()*Grid::getSizeY() + i*Grid::getSizeY() + j].value;
             }
         }
-        free(grid);
 
         sensor_msgs::msg::PointCloud2 pc_msg;
         pc_msg.header.stamp = rclcpp::Time(0);
@@ -186,28 +191,29 @@ class SDFNode : public rclcpp::Node {
             memcpy(&pc_msg.data[byte_idx+8],&z,sizeof(float));
         }
         }
-        publisher_2->publish(pc_msg);
+        reach_pub->publish(pc_msg);
         free(grid_slice);
     }
     void topic_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-        std::cout << "Callback function for LiDAR has started..." << std::endl;
+        // std::cout << "Callback function for LiDAR has started..." << std::endl;
         // visualizeSDF(msg);)
-        int num;
-        this->get_parameter("num_iter",num);
-        visualizeReachabilitySetSlice(msg,3.0f,0.0f);
+        // int num;
+        // this->get_parameter("num_iter",num);
+        Grid::Point* grid;
+        visualizeReachabilitySetSlice(msg,3.0f,0.0f,grid);
+
         // The following line is not being returned
-        std::cout << "Callback function for LiDAR has ended..." << std::endl;
+        // std::cout << "Callback function __syncthreads();for LiDAR has ended..." << std::endl;
     }
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr subscription_;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_1;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_2;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr sdf_pub;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr reach_pub;
+    rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_pub;
   };
 
   int main(int argc, char *argv[]) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<SDFNode>();
-
-    
+    auto node = std::make_shared<SDFNode>(); 
     // firstInitMem() takes the brunt of the slow cudaMalloc command as it allocates and frees memory to a dummy pointer
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(node);
