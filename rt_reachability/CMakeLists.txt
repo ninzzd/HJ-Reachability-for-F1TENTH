@@ -16,6 +16,7 @@ find_package(visualization_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(ackermann_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(nav_msgs REQUIRED)
 # CUDA Dependency
 find_package(CUDAToolkit REQUIRED)
 
@@ -68,6 +69,8 @@ ament_target_dependencies(sdf_node
   sensor_msgs
   visualization_msgs
   geometry_msgs
+  nav_msgs
+  ackermann_msgs
 )
 target_link_libraries(sdf_node
   grid_lib

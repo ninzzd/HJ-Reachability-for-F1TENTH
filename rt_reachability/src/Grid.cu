@@ -4,6 +4,7 @@
 #define lli long long int
 #define min(x,y) ((x) < (y)? (x) : (y))
 #define max(x,y) ((x) > (y)? (x) : (y))
+#define cap(val,min,max) ((val) < (min) ? (min) : ((val) < (max) ? val : max))
 using namespace rt_reachability;
 int Grid::Nx;
 int Grid::Ny;
@@ -103,6 +104,17 @@ float Grid::getMinTheta(){
 }
 float Grid::getMaxTheta(){
     return Grid::theta_max;
+}
+void Grid::getIndices(float x, float y, float v, float theta, int &i, int &j, int &k, int &l){
+    i = cap((int)floorf32((float)(x_max - x)*(Nx - 1)/(x_max - x_min)),0,Nx-1);
+    j = cap((int)floorf32((float)(y_max - y)*(Ny - 1)/(y_max - y_min)),0,Ny-1);
+    k = cap((int)floorf32((float)(v - v_min)*(Nv - 1)/(v_max - v_min)),0,Nv-1);
+    l = cap((int)floorf32((float)(theta - theta_min)*(Ntheta - 1)/(theta_max - theta_min)),0,Ntheta-1);
+}
+int Grid::getID(float x, float y, float v, float theta){
+    int i,j,k,l;
+    getIndices(x,y,v,theta,i,j,k,l);
+    return cap(l*Nx*Ny*Nv + k*Nx*Ny + i*Ny + j,0,Nx*Ny*Nv*Ntheta-1);
 }
 __global__ void initGridKernel(float* cuda_SDF, Grid::Point* cuda_grid, int Nx, int Ny, int Nv, int Ntheta, float safety_radius){
     int idx = blockDim.x*blockIdx.x + threadIdx.x;

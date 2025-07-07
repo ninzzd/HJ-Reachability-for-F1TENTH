@@ -38,6 +38,9 @@ namespace rt_reachability {
         static float getMinTheta();
         static float getMaxTheta();
 
+        static void getIndices(float x, float y, float v, float theta, int &i, int &j, int &k, int &l);
+        static int getID(float x, float y, float v, float theta);
+
         static void initializeGrid(float* r_obstacles,int num_obstacles,float angle_min,float angle_max,float angle_inc);
         static Point* computeReachability();
         static Point* computeReachability(int N);

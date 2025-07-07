@@ -4,7 +4,7 @@
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "geometry_msgs/msg/point.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
-// #include "visualization_msgs/msg/marker.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 #include "tf2_ros/buffer.h"
 #include "rt_reachability/Grid.hpp"
 #include "rt_reachability/SDF.hpp"
@@ -25,10 +25,23 @@ class SDFNode : public rclcpp::Node {
         this->sent = 0;
         this->declare_parameter<int>("num_iter",10);
         auto default_qos = rclcpp::SensorDataQoS().keep_last(1);
-
+        Grid::setSize(50,50,50,50);
+        Grid::setLowerBounds(0.0,-1.0,-5.0,-((float)M_PI)/2);
+        Grid::setUpperBounds(2.0,+1.0,5.0,+((float)M_PI)/2);
+        Grid::setCarLength(0.33);
+        Grid::setInputParams(50,20,-10.0f,10.0f,-((float)M_PI)/6,+((float)M_PI)/6);
+        Grid::setValueFunctionBounds(-2.5f,+5.0f);
+        Grid::setHorizon(0.1);
+        Grid::computeDeltaT();
+        firstInitMem();
         subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/scan", default_qos,
-            std::bind(&SDFNode::topic_callback, this, _1));
+            std::bind(&SDFNode::laser_callback, this, _1)
+        );
+        odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
+            "/ego_racecar/odom", 10,
+             std::bind(&SDFNode::odom_callback, this, _1)
+        );
         sdf_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(
             "/sdf_grid_pointcloud", 10
         );
@@ -38,15 +51,8 @@ class SDFNode : public rclcpp::Node {
         drive_pub = this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(
             "/drive",   10
         );
-        Grid::setSize(50,50,50,50);
-        Grid::setLowerBounds(0.0,-1.0,0.1,-((float)M_PI)/2);
-        Grid::setUpperBounds(2.0,+1.0,5.0,+((float)M_PI)/2);
-        Grid::setCarLength(0.33);
-        Grid::setInputParams(50,20,-10.0f,10.0f,-((float)M_PI)/6,+((float)M_PI)/6);
-        Grid::setValueFunctionBounds(-2.5f,+5.0f);
-        Grid::setHorizon(0.1);
-        Grid::computeDeltaT();
-        firstInitMem();
+        rclcpp::sleep_for(std::chrono::nanoseconds(1000000000));
+        timer = this->create_wall_timer(std::chrono::milliseconds(4),std::bind(&SDFNode::timer_callback,this));
     }
 
   private:
@@ -145,7 +151,7 @@ class SDFNode : public rclcpp::Node {
         sdf_pub->publish(pc_msg);
         free(valuefunc2D);
     }
-    void visualizeReachabilitySetSlice(const sensor_msgs::msg::LaserScan::SharedPtr msg,float v, float theta, Grid::Point* grid){
+    void visualizeReachabilitySetSlice(const sensor_msgs::msg::LaserScan::SharedPtr msg,float v, float theta, Grid::Point* &grid){
         size_t num_obstacles = (size_t)msg->ranges.size();
         float* r_obstacles = (float*) malloc(sizeof(float) * num_obstacles);
         for(int i = 0; i < (int)num_obstacles; i++){
@@ -180,35 +186,55 @@ class SDFNode : public rclcpp::Node {
         pc_msg.row_step = pc_msg.point_step * pc_msg.width;
         pc_msg.data.resize(pc_msg.row_step*pc_msg.height);
         for(int i = 0;i < Grid::getSizeX();i++){
-        for(int j = 0;j < Grid::getSizeY();j++){
-            size_t point_idx = i*Grid::getSizeY() + j;
-            size_t byte_idx = point_idx *pc_msg.point_step;
-            float x = Grid::getMaxX() - i*(Grid::getMaxX() - Grid::getMinX())/(Grid::getSizeX() - 1);
-            float y = Grid::getMaxY() - j*(Grid::getMaxY() - Grid::getMinY())/(Grid::getSizeY() - 1);
-            float z = grid_slice[i*Grid::getSizeY() + j];
-            memcpy(&pc_msg.data[byte_idx+0],&x,sizeof(float));
-            memcpy(&pc_msg.data[byte_idx+4],&y,sizeof(float));
-            memcpy(&pc_msg.data[byte_idx+8],&z,sizeof(float));
-        }
+            for(int j = 0;j < Grid::getSizeY();j++){
+                size_t point_idx = i*Grid::getSizeY() + j;
+                size_t byte_idx = point_idx *pc_msg.point_step;
+                float x = Grid::getMaxX() - i*(Grid::getMaxX() - Grid::getMinX())/(Grid::getSizeX() - 1);
+                float y = Grid::getMaxY() - j*(Grid::getMaxY() - Grid::getMinY())/(Grid::getSizeY() - 1);
+                float z = grid_slice[i*Grid::getSizeY() + j];
+                memcpy(&pc_msg.data[byte_idx+0],&x,sizeof(float));
+                memcpy(&pc_msg.data[byte_idx+4],&y,sizeof(float));
+                memcpy(&pc_msg.data[byte_idx+8],&z,sizeof(float));
+            }
         }
         reach_pub->publish(pc_msg);
         free(grid_slice);
     }
-    void topic_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-        // std::cout << "Callback function for LiDAR has started..." << std::endl;
-        // visualizeSDF(msg);)
-        // int num;
-        // this->get_parameter("num_iter",num);
+    void laser_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+        // if(laser_lock == false)
+            current_laser = msg;
+    }
+    void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg){
+        // if(odom_lock == false)
+            current_odom = msg;
+    }
+    void timer_callback(){
+        // odom_lock = true;
+        // laser_lock = true;
         Grid::Point* grid;
-        visualizeReachabilitySetSlice(msg,3.0f,0.0f,grid);
-
-        // The following line is not being returned
-        // std::cout << "Callback function __syncthreads();for LiDAR has ended..." << std::endl;
+        float v = (float)current_odom->twist.twist.linear.x;
+        visualizeReachabilitySetSlice(current_laser,v,0.0f,grid);
+        ackermann_msgs::msg::AckermannDriveStamped msg;
+        msg.header.frame_id = "ego_racecar/base_link";
+        msg.header.stamp = rclcpp::Time(0);
+        int idx = Grid::getID(0.0f,0.0f,v,0.0f);
+        msg.drive.acceleration = grid[idx].opt_a;
+        msg.drive.steering_angle = grid[idx].opt_delta;
+        drive_pub->publish(msg);
+        free(grid);
+        // odom_lock = false;
+        // laser_lock = false;
     }
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr subscription_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr sdf_pub;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr reach_pub;
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_pub;
+    rclcpp::TimerBase::SharedPtr timer;
+    sensor_msgs::msg::LaserScan::SharedPtr current_laser;
+    nav_msgs::msg::Odometry::SharedPtr current_odom;
+    // bool laser_lock;
+    // bool odom_lock;
   };
 
   int main(int argc, char *argv[]) {
@@ -219,6 +245,5 @@ class SDFNode : public rclcpp::Node {
     executor.add_node(node);
     executor.spin();  // Callbacks run one at a time
     rclcpp::shutdown();
-    return 0;
     return 0;
 }
