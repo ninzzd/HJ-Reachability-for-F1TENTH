@@ -1,6 +1,8 @@
 #pragma once
 
 #include "rt_reachability/Grid.hpp"
+#include <sstream>
+#include <string>
 #include <cmath>
 #include <cuda_runtime.h>
 #define CUDA_CHECK(cuda_error) rt_reachability::checkCUDAerror((cuda_error),__FILE__,__LINE__)

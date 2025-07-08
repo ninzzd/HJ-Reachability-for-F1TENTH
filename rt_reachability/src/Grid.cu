@@ -30,6 +30,9 @@ float Grid::delta_t = 0.01f;
 float Grid::val_max = 0.0f;
 float Grid::val_min = 0.0f;
 float Grid::horizon = 0.0f;
+cudaEvent_t Grid::global_start;
+cudaEvent_t Grid::global_end;
+float Grid::global_latency;
 void Grid::setSize(int nx, int ny, int nv, int ntheta){
     Grid::Nx = nx;
     Grid::Ny = ny;
@@ -116,6 +119,12 @@ int Grid::getID(float x, float y, float v, float theta){
     getIndices(x,y,v,theta,i,j,k,l);
     return cap(l*Nx*Ny*Nv + k*Nx*Ny + i*Ny + j,0,Nx*Ny*Nv*Ntheta-1);
 }
+float Grid::getHorizon(){
+    return horizon;
+}
+// void Grid::setMode(int mode = 0){
+//     Grid::mode = mode;
+// }
 __global__ void initGridKernel(float* cuda_SDF, Grid::Point* cuda_grid, int Nx, int Ny, int Nv, int Ntheta, float safety_radius){
     int idx = blockDim.x*blockIdx.x + threadIdx.x;
     // max(min(Ntheta-1,...),0)
@@ -367,13 +376,18 @@ __global__ void updateValueKernel(Grid::Point* grid, int Nx, int Ny, int Nv, int
                 case 1:
                     dot = v*sinf(theta);
                     break;
+                /*
+                    ISSUE: 
+                    - For t==2 and t==3, deriv will always equal 0 due to the SDF initialization
+                    - This means that, control inputs, which only have an effect when t==2 and t==3, will be redundant initially
+                    - Velocity and yaw component contributions to hamiltonian is zero, but x and y contributions are non-zero and control independent, depend on current yaw and state
+                 */
                 case 2:
-                    opt_a = deriv > 0 ? a_max : a_min;
+                    opt_a = deriv > 0 ? a_max : (deriv < 0 ? a_min : 0.0f); // when deriv is zero, control has no affect on the hamiltonian, the value doesn't matter (set to default 0.0f)
                     dot = opt_a;
-
                     break;
                 case 3:
-                    opt_delta = v*deriv > 0 ? delta_max : delta_min;
+                    opt_delta = v*deriv > 0 ? delta_max : (v*deriv < 0 ? delta_min : 0.0f); // when deriv*v is zero, control has no affect on the hamiltonian, the value doesn't matter (set to default 0.0f)
                     dot = v*tanf(opt_delta)/length; // Find out car length
                     break;
             }
@@ -392,26 +406,53 @@ __global__ void updateValueKernel(Grid::Point* grid, int Nx, int Ny, int Nv, int
 } 
 
 void Grid::initializeGrid(float* r_obstacles,int num_obstacles,float angle_min,float angle_max,float angle_inc){
+    cudaEvent_t start, end;
+    float ms = -1.0f;
+    cudaEventCreate(&start);
+    cudaEventCreate(&end);
     if(Grid::grid != nullptr){
-        CUDA_CHECK(cudaFree(Grid::grid));
+        CUDA_CHECK(cudaEventRecord(start));
+            CUDA_CHECK(cudaFree(Grid::grid));
+        CUDA_CHECK(cudaEventRecord(end));
+        CUDA_CHECK(cudaEventSynchronize(end));
+        CUDA_CHECK(cudaEventElapsedTime(&ms,start,end));
+        std::cout << "grid clr: " << ms << "ms, ";
     }
-    CUDA_CHECK(cudaMalloc(&(Grid::grid),sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta));
+    CUDA_CHECK(cudaEventRecord(start));
+        CUDA_CHECK(cudaMalloc(&(Grid::grid),sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta));
+    CUDA_CHECK(cudaEventRecord(end));
+    CUDA_CHECK(cudaEventSynchronize(end));
+    CUDA_CHECK(cudaEventElapsedTime(&ms,start,end));
+    std::cout << "grid alloc: " << ms << "ms, ";
+
     float* cuda_SDF = computeSDF(r_obstacles,num_obstacles,angle_min,angle_max,angle_inc);
 
     // Given grid and block size ensures full occupancy
     dim3 gridSize((int)(Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta/256)+1);
     dim3 blockSize(256);
 
-    initGridKernel<<<gridSize,blockSize>>>(cuda_SDF,Grid::grid,Grid::Nx,Grid::Ny,Grid::Nv,Grid::Ntheta,Grid::length);
-    CUDA_CHECK(cudaDeviceSynchronize());
-    CUDA_CHECK(cudaFree(cuda_SDF));
-    // CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaEventRecord(start));
+        initGridKernel<<<gridSize,blockSize>>>(cuda_SDF,Grid::grid,Grid::Nx,Grid::Ny,Grid::Nv,Grid::Ntheta,Grid::length);
+    CUDA_CHECK(cudaEventRecord(end));
+    CUDA_CHECK(cudaEventSynchronize(end));
+    CUDA_CHECK(cudaEventElapsedTime(&ms,start,end));
+    std::cout << "grid init exec: " << ms << "ms, ";
+
+    CUDA_CHECK(cudaEventRecord(start));
+        CUDA_CHECK(cudaFree(cuda_SDF));
+    CUDA_CHECK(cudaEventRecord(end));
+    CUDA_CHECK(cudaEventSynchronize(end));
+    CUDA_CHECK(cudaEventElapsedTime(&ms,start,end));
+    std::cout << "temp cudafree: " << ms << "ms" << std::endl;
+    cudaEventDestroy(start);
+    cudaEventDestroy(end);
 }
 void Grid::computeDeltaT(){
     float lambda_x = 0;
     float lambda_y = 0;
     float lambda_v = Grid::a_max;
     float lambda_theta = 0;
+    // Seems to have redundant steps
     for(int a1 = 0;a1 < Nv;a1++){
         float v = (v_min + a1*(v_max - v_min)/(Nv - 1));
         for(int a2 = 0;a2 < Ntheta;a2++){
@@ -428,10 +469,10 @@ void Grid::computeDeltaT(){
         }
     }
     // Revised Courant-Freidrichs-Lewy Condition
-    // delta_t = fminf((x_max-x_min)/((Nx-1)*lambda_x),fminf((y_max-y_min)/((Ny-1)*lambda_y),fminf((v_max-v_min)/((Nv-1)*lambda_v),(theta_max-theta_min)/((Ntheta-1)*lambda_theta))));
-    delta_t = 1 * 0.5/(lambda_x/((x_max-x_min)/(Nx-1)) + lambda_y/((y_max-y_min)/(Ny-1)) + lambda_v/((v_max-v_min)/(Nv-1)) + lambda_theta/((theta_max-theta_min)/(Ntheta-1)));
+    delta_t = 1 * 1.0/(lambda_x/((x_max-x_min)/(Nx-1)) + lambda_y/((y_max-y_min)/(Ny-1)) + lambda_v/((v_max-v_min)/(Nv-1)) + lambda_theta/((theta_max-theta_min)/(Ntheta-1)));
     std::cout << "Computed Iteration Timestep: " << delta_t << std::endl;
 }
+// User-defined number of integral iterations
 Grid::Point* Grid::computeReachability(int N){
     if(Grid::grid != nullptr){
         std::cout << "Grid has been initialized" << std::endl;
@@ -456,6 +497,7 @@ Grid::Point* Grid::computeReachability(int N){
     grid = nullptr;
     return tempGrid;
 }
+// Computed number of integral iterations based on user-defined time-horizon
 Grid::Point* Grid::computeReachability(){
     cudaEvent_t start, end;
     cudaEventCreate(&start);
@@ -473,26 +515,33 @@ Grid::Point* Grid::computeReachability(){
     for(int i = 0;i < N;i++){
         std::cout << "Iteration: " << i+1 << ", ";
         CUDA_CHECK(cudaEventRecord(start));
-        partialDerivKernel<<<gridSize,blockSize>>>(grid, Nx, Ny, Nv, Ntheta, (x_max - x_min)/(float)(Nx - 1), (y_max - y_min)/(float)(Ny - 1), (v_max - v_min)/(float)(Nv - 1), (theta_max - theta_min)/(float)(Ntheta - 1));
+            partialDerivKernel<<<gridSize,blockSize>>>(grid, Nx, Ny, Nv, Ntheta, (x_max - x_min)/(float)(Nx - 1), (y_max - y_min)/(float)(Ny - 1), (v_max - v_min)/(float)(Nv - 1), (theta_max - theta_min)/(float)(Ntheta - 1));
         CUDA_CHECK(cudaEventRecord(end));
         CUDA_CHECK(cudaEventSynchronize(end));
         CUDA_CHECK(cudaEventElapsedTime(&ms,start,end));
-        std::cout << "Partial Derivatives Kernel Execution Time: " << ms << ", ";
+        std::cout << "part deriv exec: " << ms << " ms, ";
 
         CUDA_CHECK(cudaEventRecord(start));
-        updateValueKernel<<<gridSize,blockSize>>>(grid,Nx,Ny,Nv,Ntheta,x_min,x_max,y_min,y_max,v_min,v_max,theta_min,theta_max,Na,Ndelta,a_min,a_max,delta_min,delta_max,delta_t,length,val_min,val_max);
+            updateValueKernel<<<gridSize,blockSize>>>(grid,Nx,Ny,Nv,Ntheta,x_min,x_max,y_min,y_max,v_min,v_max,theta_min,theta_max,Na,Ndelta,a_min,a_max,delta_min,delta_max,delta_t,length,val_min,val_max);
         CUDA_CHECK(cudaEventRecord(end));
         CUDA_CHECK(cudaEventSynchronize(end));
         CUDA_CHECK(cudaEventElapsedTime(&ms,start,end));
-        std::cout << "Grid Update (HJ Reachability Integrator) Kernel Execution Time: " << ms << std::endl;
+        std::cout << "grid update exec: " << ms << std::endl;
         // CUDA_CHECK(cudaDeviceSynchronize());
     }
     std::cout << "Reachability set computation is over" << std::endl;
     Point* tempGrid = (Point*)malloc(sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta);
-    // CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(tempGrid,grid,sizeof(Grid::Point)*Grid::Nx*Grid::Ny*Grid::Nv*Grid::Ntheta,cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaFree(grid));
     grid = nullptr;
+
+    float total = -1.0f;
+    cudaEventDestroy(start);
+    cudaEventDestroy(end);
+    cudaEventRecord(global_end);
+    cudaEventSynchronize(global_end);
+    cudaEventElapsedTime(&total,global_start,global_end);
+    std::cout << "Total BRT Computation: " << total << "ms" << std::endl;
+    global_latency = total;
     return tempGrid;
 }

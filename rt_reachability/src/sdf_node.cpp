@@ -4,8 +4,11 @@
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "geometry_msgs/msg/point.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
+#include "geometry_msgs/msg/quaternion.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "tf2_ros/buffer.h"
+#include "tf2/LinearMath/Quaternion.h"
+#include "tf2/LinearMath/Matrix3x3.h"
 #include "rt_reachability/Grid.hpp"
 #include "rt_reachability/SDF.hpp"
 #include <cmath>
@@ -29,7 +32,7 @@ class SDFNode : public rclcpp::Node {
         Grid::setLowerBounds(0.0,-1.0,-5.0,-((float)M_PI)/2);
         Grid::setUpperBounds(2.0,+1.0,5.0,+((float)M_PI)/2);
         Grid::setCarLength(0.33);
-        Grid::setInputParams(50,20,-10.0f,10.0f,-((float)M_PI)/6,+((float)M_PI)/6);
+        Grid::setInputParams(50,20,-5.0f,5.0f,-((float)M_PI)/6,+((float)M_PI)/6);
         Grid::setValueFunctionBounds(-2.5f,+5.0f);
         Grid::setHorizon(0.1);
         Grid::computeDeltaT();
@@ -211,6 +214,14 @@ class SDFNode : public rclcpp::Node {
     void timer_callback(){
         // odom_lock = true;
         // laser_lock = true;
+        float x0,y0,theta0;
+        double roll, pitch, yaw;
+        x0 = current_odom->pose.pose.position.x;
+        y0 = current_odom->pose.pose.position.y;
+        tf2::Quaternion q(current_odom->pose.pose.orientation.w,current_odom->pose.pose.orientation.x,current_odom->pose.pose.orientation.y,current_odom->pose.pose.orientation.z);
+        tf2::Matrix3x3(q).getRPY(roll,pitch,yaw);
+        theta0 = (float)yaw;
+
         Grid::Point* grid;
         float v = (float)current_odom->twist.twist.linear.x;
         visualizeReachabilitySetSlice(current_laser,v,0.0f,grid);
@@ -219,6 +230,7 @@ class SDFNode : public rclcpp::Node {
         msg.header.stamp = rclcpp::Time(0);
         int idx = Grid::getID(0.0f,0.0f,v,0.0f);
         msg.drive.acceleration = grid[idx].opt_a;
+        msg.drive.speed = v + grid[idx].opt_a*Grid::getHorizon();
         msg.drive.steering_angle = grid[idx].opt_delta;
         drive_pub->publish(msg);
         free(grid);
@@ -241,7 +253,7 @@ class SDFNode : public rclcpp::Node {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<SDFNode>(); 
     // firstInitMem() takes the brunt of the slow cudaMalloc command as it allocates and frees memory to a dummy pointer
-    rclcpp::executors::SingleThreadedExecutor executor;
+    rclcpp::executors::MultiThreadedExecutor executor;
     executor.add_node(node);
     executor.spin();  // Callbacks run one at a time
     rclcpp::shutdown();

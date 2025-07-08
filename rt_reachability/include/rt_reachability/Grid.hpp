@@ -1,5 +1,7 @@
 #pragma once
 #include <iostream>
+#include <string>
+#include <sstream>
 #include "float.h"
 #include "rt_reachability/SDF.hpp"
 namespace rt_reachability {
@@ -25,6 +27,7 @@ namespace rt_reachability {
         static int getSizeY();
         static int getSizeV();
         static int getSizeTheta();
+        static float getHorizon();
         
         static float getMinX();
         static float getMaxX();
@@ -45,6 +48,9 @@ namespace rt_reachability {
         static Point* computeReachability();
         static Point* computeReachability(int N);
         static void computeDeltaT();
+        static cudaEvent_t global_start, global_end;
+        static float global_latency;
+        // static void setMode(int mode = 0);
 
     private:
         static int Nx, Ny, Nv, Ntheta;
@@ -58,5 +64,6 @@ namespace rt_reachability {
         static float val_min, val_max;
         static Point* grid;
         static float horizon;
+        static int mode;
     };
 }
