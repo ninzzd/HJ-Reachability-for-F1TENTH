@@ -11,6 +11,7 @@
 #include "tf2/LinearMath/Matrix3x3.h"
 #include "rt_reachability/Grid.hpp"
 #include "rt_reachability/SDF.hpp"
+#include <mutex>
 #include <cmath>
 #include "math.h"
 
@@ -54,6 +55,8 @@ class SDFNode : public rclcpp::Node {
         drive_pub = this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(
             "/drive",   10
         );
+        odom_new = false;
+        laser_new = false;
         rclcpp::sleep_for(std::chrono::nanoseconds(1000000000));
         timer = this->create_wall_timer(std::chrono::milliseconds(4),std::bind(&SDFNode::timer_callback,this));
     }
@@ -154,19 +157,19 @@ class SDFNode : public rclcpp::Node {
         sdf_pub->publish(pc_msg);
         free(valuefunc2D);
     }
-    void visualizeReachabilitySetSlice(const sensor_msgs::msg::LaserScan::SharedPtr msg,float v, float theta, Grid::Point* &grid){
-        size_t num_obstacles = (size_t)msg->ranges.size();
-        float* r_obstacles = (float*) malloc(sizeof(float) * num_obstacles);
-        for(int i = 0; i < (int)num_obstacles; i++){
-            r_obstacles[i] = (float)msg->ranges[i];
-        }
-        Grid::initializeGrid(r_obstacles,num_obstacles,(float)msg->angle_min,(float)msg->angle_max,(float)msg->angle_increment);
-        grid = Grid::computeReachability();
+    void visualizeReachabilitySetSlice(Grid::Point* grid, float v, float theta){
+        // size_t num_obstacles = (size_t)msg->ranges.size();
+        // float* r_obstacles = (float*) malloc(sizeof(float) * num_obstacles);
+        // for(int i = 0; i < (int)num_obstacles; i++){
+        //     r_obstacles[i] = (float)msg->ranges[i];
+        // }
+        // Grid::initializeGrid(r_obstacles,num_obstacles,(float)msg->angle_min,(float)msg->angle_max,(float)msg->angle_increment);
+        // grid = Grid::computeReachability();
         float* grid_slice = (float*) malloc(sizeof(float)*Grid::getSizeX()*Grid::getSizeY());
         int k = (int)floorf((v - Grid::getMinV())*(Grid::getSizeV() - 1)/(Grid::getMaxV() - Grid::getMinV()));
         k = max(0,min(k,Grid::getSizeV()-1));
-        int l = (int)floorf((v - Grid::getMinTheta())*(Grid::getSizeTheta() - 1)/(Grid::getMaxTheta() - Grid::getMinTheta()));
-        l = max(0,min(k,Grid::getSizeTheta()-1));
+        int l = (int)floorf((theta - Grid::getMinTheta())*(Grid::getSizeTheta() - 1)/(Grid::getMaxTheta() - Grid::getMinTheta()));
+        l = max(0,min(l,Grid::getSizeTheta()-1));
         for(int i = 0;i < Grid::getSizeX();i++){
             for(int j = 0;j < Grid::getSizeY();j++){
                 grid_slice[i*Grid::getSizeY() + j] = grid[l*Grid::getSizeX()*Grid::getSizeY()*Grid::getSizeV() + k*Grid::getSizeX()*Grid::getSizeY() + i*Grid::getSizeY() + j].value;
@@ -177,7 +180,6 @@ class SDFNode : public rclcpp::Node {
         pc_msg.header.stamp = rclcpp::Time(0);
         pc_msg.header.frame_id = "ego_racecar/laser_model";
         pc_msg.height = 1;
-        free(r_obstacles);
         pc_msg.width = Grid::getSizeX()*Grid::getSizeY();
         pc_msg.is_dense = true;
         sensor_msgs::msg::PointField field;
@@ -203,39 +205,86 @@ class SDFNode : public rclcpp::Node {
         reach_pub->publish(pc_msg);
         free(grid_slice);
     }
+    Grid::Point* computeBRT(const sensor_msgs::msg::LaserScan msg){
+        size_t num_obstacles = (size_t)msg.ranges.size();
+        float* r_obstacles = (float*) malloc(sizeof(float) * num_obstacles);
+        for(int i = 0; i < (int)num_obstacles; i++){
+            r_obstacles[i] = (float)msg.ranges[i];
+        }
+        Grid::initializeGrid(r_obstacles,num_obstacles,(float)msg.angle_min,(float)msg.angle_max,(float)msg.angle_increment);
+        free(r_obstacles);
+        return Grid::computeReachability();
+    }
     void laser_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-        // if(laser_lock == false)
-            current_laser = msg;
+        laser_mutex.lock();
+        current_laser = *msg;
+        laser_new = true;
+        laser_mutex.unlock();
     }
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg){
-        // if(odom_lock == false)
-            current_odom = msg;
+        odom_mtx.lock();
+        current_odom = *msg;
+        odom_new = true;
+        odom_mtx.unlock();
     }
     void timer_callback(){
         // odom_lock = true;
         // laser_lock = true;
+        nav_msgs::msg::Odometry local_odom;
+        sensor_msgs::msg::LaserScan local_laser;
+
         float x0,y0,theta0;
         double roll, pitch, yaw;
-        x0 = current_odom->pose.pose.position.x;
-        y0 = current_odom->pose.pose.position.y;
-        tf2::Quaternion q(current_odom->pose.pose.orientation.w,current_odom->pose.pose.orientation.x,current_odom->pose.pose.orientation.y,current_odom->pose.pose.orientation.z);
-        tf2::Matrix3x3(q).getRPY(roll,pitch,yaw);
+        bool toExit = false;
+        odom_mtx.lock();
+            if(odom_new == true){
+                local_odom = current_odom;
+                odom_new = false;
+            }
+            else toExit = true;
+        odom_mtx.unlock();
+        if(toExit == true) return;
+        x0 = local_odom.pose.pose.position.x;
+        y0 = local_odom.pose.pose.position.y;
+        tf2::Quaternion q0(local_odom.pose.pose.orientation.w,local_odom.pose.pose.orientation.x,local_odom.pose.pose.orientation.y,local_odom.pose.pose.orientation.z);
+        tf2::Matrix3x3(q0).getRPY(roll,pitch,yaw);
         theta0 = (float)yaw;
 
-        Grid::Point* grid;
-        float v = (float)current_odom->twist.twist.linear.x;
-        visualizeReachabilitySetSlice(current_laser,v,0.0f,grid);
+        laser_mutex.lock();
+            if(laser_new == true){
+                local_laser = current_laser; 
+                laser_new = false;
+            }   
+            else toExit = true;
+        laser_mutex.unlock();
+        if(toExit == true) return;
+        Grid::Point* grid = computeBRT(local_laser);
+        float x,y,v,theta;
+        odom_mtx.lock();
+            if(odom_new == true){
+                local_odom = current_odom;
+                odom_new = false;
+            }
+            else toExit = true;
+        odom_mtx.unlock();
+        if(toExit == true) return;
+        x = local_odom.pose.pose.position.x;
+        y = local_odom.pose.pose.position.y;
+        v = local_odom.twist.twist.linear.x;
+        tf2::Quaternion q(local_odom.pose.pose.orientation.w,local_odom.pose.pose.orientation.x,local_odom.pose.pose.orientation.y,local_odom.pose.pose.orientation.z);
+        tf2::Matrix3x3(q).getRPY(roll,pitch,yaw);
+        theta = (float)yaw;
+
+        visualizeReachabilitySetSlice(grid,v,theta-theta0);
         ackermann_msgs::msg::AckermannDriveStamped msg;
         msg.header.frame_id = "ego_racecar/base_link";
         msg.header.stamp = rclcpp::Time(0);
-        int idx = Grid::getID(0.0f,0.0f,v,0.0f);
+        int idx = Grid::getID(x-x0,y-y0,v,theta-theta0);
         msg.drive.acceleration = grid[idx].opt_a;
         msg.drive.speed = v + grid[idx].opt_a*Grid::getHorizon();
         msg.drive.steering_angle = grid[idx].opt_delta;
         drive_pub->publish(msg);
         free(grid);
-        // odom_lock = false;
-        // laser_lock = false;
     }
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr subscription_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
@@ -243,8 +292,11 @@ class SDFNode : public rclcpp::Node {
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr reach_pub;
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_pub;
     rclcpp::TimerBase::SharedPtr timer;
-    sensor_msgs::msg::LaserScan::SharedPtr current_laser;
-    nav_msgs::msg::Odometry::SharedPtr current_odom;
+    sensor_msgs::msg::LaserScan current_laser;
+    nav_msgs::msg::Odometry current_odom;
+    std::mutex odom_mtx;
+    bool odom_new, laser_new;
+    std::mutex laser_mutex;
     // bool laser_lock;
     // bool odom_lock;
   };
